@@ -10,11 +10,13 @@ const {
 router.post(
   "/product/category/add",
   requireAdminLogin,
+  upload.single("image"),
   categoryController.addProductCategory_post
 );
 router.post(
   "/product/category/subcategory/add",
   requireAdminLogin,
+  upload.single("image"),
   categoryController.addSubCategory_post
 );
 
@@ -41,6 +43,8 @@ router.delete(
 );
 router.put(
   "/product/category/:categoryId",
+  requireAdminLogin,
+  upload.single("image"),
   categoryController.editCategory
 );
 router.get(
@@ -48,5 +52,13 @@ router.get(
   categoryController.getSingleCategory_get
 );
 router.get("/product/category/all", categoryController.allCategory_get);
+router.get(
+  "/product/subcatagory/all",
+  categoryController.getAllSubcategories
+);
+router.get(
+  "/product/subcatagory/getasub/:id",
+  categoryController.getASubcategory
+);
 
 module.exports = router;

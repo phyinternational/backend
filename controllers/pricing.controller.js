@@ -2,10 +2,18 @@ const silverPriceService = require("../services/silver-price.service");
 const { successRes, errorRes, internalServerError } = require("../utility");
 const catchAsync = require("../utility/catch-async");
 
-// Get current silver price
+// Get current silver price (public route - uses saved data only)
 module.exports.getCurrentSilverPrice = catchAsync(async (req, res) => {
   try {
-    const silverPrice = await silverPriceService.getCurrentSilverPrice();
+    const SilverPrice = require("../models/silver-price.model");
+    
+    // Get the most recent active silver price from database only
+    const silverPrice = await SilverPrice.findOne({ isActive: true })
+      .sort({ lastUpdated: -1 });
+    
+    if (!silverPrice) {
+      return errorRes(res, 404, "No silver price data available. Please contact admin.");
+    }
     
     successRes(res, {
       silverPrice,
@@ -17,7 +25,7 @@ module.exports.getCurrentSilverPrice = catchAsync(async (req, res) => {
   }
 });
 
-// Calculate dynamic price for a product
+// Calculate dynamic price for a product (public route - uses saved price data only)
 module.exports.calculateProductPrice = catchAsync(async (req, res) => {
   try {
     const { silverWeight, laborPercentage, gst } = req.body;
@@ -26,11 +34,38 @@ module.exports.calculateProductPrice = catchAsync(async (req, res) => {
       return errorRes(res, 400, "Valid silver weight is required");
     }
 
-    const priceCalculation = await silverPriceService.calculateDynamicPrice(
-      silverWeight,
-      laborPercentage || 0,
-      gst || 18
-    );
+    const SilverPrice = require("../models/silver-price.model");
+    
+    // Get current silver price from database only (no API call)
+    const silverPrice = await SilverPrice.findOne({ isActive: true })
+      .sort({ lastUpdated: -1 });
+    
+    if (!silverPrice) {
+      return errorRes(res, 404, "No silver price data available. Please contact admin.");
+    }
+
+    // Calculate pricing manually using saved silver price
+    const silverCost = silverWeight * silverPrice.pricePerGram;
+    const laborCost = (laborPercentage || 0) / 100 * silverCost;
+    const subtotal = silverCost + laborCost;
+    const gstAmount = (gst || 18) / 100 * subtotal;
+    const finalPrice = subtotal + gstAmount;
+
+    const priceCalculation = {
+      breakdown: {
+        silverWeight: silverWeight,
+        silverPricePerGram: silverPrice.pricePerGram,
+        silverCost: Math.round(silverCost * 100) / 100,
+        laborPercentage: laborPercentage || 0,
+        laborCost: Math.round(laborCost * 100) / 100,
+        subtotal: Math.round(subtotal * 100) / 100,
+        gstPercentage: gst || 18,
+        gstAmount: Math.round(gstAmount * 100) / 100,
+        finalPrice: Math.round(finalPrice * 100) / 100
+      },
+      finalPrice: Math.round(finalPrice * 100) / 100,
+      lastUpdated: silverPrice.lastUpdated
+    };
 
     successRes(res, {
       priceCalculation,

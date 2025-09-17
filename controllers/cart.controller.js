@@ -3,7 +3,7 @@ const User_Cart = mongoose.model("User_Cart");
 const User_WishlistDB = require("../models/wishlist.Model");
 const Product = mongoose.model("Product");
 const catchAsync = require("../utility/catch-async");
-
+const ErrorHandler = require("../utility/error-handler");
 const {
   errorRes,
   internalServerError,
@@ -23,7 +23,13 @@ module.exports.getCartDetails_get = catchAsync(async (req, res) => {
 });
 
 module.exports.addProduct = catchAsync(async (req, res) => {
-  const { productId, varientId, quantity } = req.body;
+  let { productId, varientId, quantity } = req.body;
+  
+  // Clean up empty varientId
+  if (varientId === "" || varientId === null) {
+    varientId = undefined;
+  }
+  
   const cart = await User_Cart.findOne({ userId: req.user.id });
   if (!cart) {
     const newCart = new User_Cart({
@@ -44,7 +50,13 @@ module.exports.addProduct = catchAsync(async (req, res) => {
 });
 
 module.exports.updateProduct = catchAsync(async (req, res) => {
-  const { productId, varientId, quantity } = req.body;
+  let { productId, varientId, quantity } = req.body;
+  
+  // Clean up empty varientId
+  if (varientId === "" || varientId === null) {
+    varientId = undefined;
+  }
+  
   const cart = await User_Cart.findOne({ userId: req.user.id });
   if (!cart) return errorRes(res, 400, "Cart not found.");
   const productIndex = cart.products.findIndex(
@@ -73,25 +85,38 @@ module.exports.getCartDetailsByUser = catchAsync(async (req, res) => {
 
 module.exports.upsertCart = catchAsync(async (req, res, next) => {
   const { products } = req.body;
-  const promises = products.map((product) => {
+  
+  // Clean up empty varientId values
+  const cleanedProducts = products.map(product => {
+    const cleanProduct = { ...product };
+    if (cleanProduct.varientId === "" || cleanProduct.varientId === null) {
+      delete cleanProduct.varientId;
+    }
+    return cleanProduct;
+  });
+  
+  const promises = cleanedProducts.map((product) => {
     return Product.findById(product.productId);
   });
 
   const validateProducts = await Promise.all(promises);
 
   let hasNullValue = false;
-  validateProducts.forEach((val) => {
+  let invalidProductIds = [];
+  
+  validateProducts.forEach((val, index) => {
     if (!val) {
       hasNullValue = true;
+      invalidProductIds.push(cleanedProducts[index].productId);
     }
   });
 
   if (hasNullValue) {
-    return next(new ErrorHandler("one or more product does not exist", 404));
+    return errorRes(res, 404, `The following products are not available: ${invalidProductIds.join(', ')}. Please remove them from your cart and try again.`);
   }
   const cart = await User_Cart.findOneAndUpdate(
     { userId: req.user._id },
-    { $set: { products } },
+    { $set: { products: cleanedProducts } },
     { upsert: true, new: true }
   );
 
@@ -102,7 +127,13 @@ module.exports.upsertCart = catchAsync(async (req, res, next) => {
 });
 
 module.exports.removeFromCart = catchAsync(async (req, res) => {
-  const { productId, varientId } = req.body;
+  let { productId, varientId } = req.body;
+  
+  // Clean up empty varientId
+  if (varientId === "" || varientId === null) {
+    varientId = undefined;
+  }
+  
   const cart = await User_Cart.findOne({ userId: req.user.id });
   if (!cart) return errorRes(res, 400, "Cart not found.");
   const productIndex = cart.products.findIndex(

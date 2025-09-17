@@ -1,0 +1,18 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Install firebase-admin",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"install",
+				"firebase-admin@^12.6.0"
+			],
+			"problemMatcher": [
+				"$eslint-stylish"
+			],
+			"group": "build"
+		}
+	]
+}

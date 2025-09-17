@@ -3,6 +3,7 @@ const productVariationController = require("../controllers/product_varient.contr
 const { requireAdminLogin } = require("../middlewares/requireLogin");
 const { addproductVariantSchema } = require("../validation/product-validation");
 const validate = require("../validation/validate");
+const upload = require("../middlewares/Multer");
 
 router.post(
   "/product-variant/add",
@@ -31,8 +32,10 @@ router.get(
   productVariationController.getProductVariation
 );
 
-router.put("/product/image/:productId/:colorId",
-requireAdminLogin,
+router.put(
+  "/product/image/:productId/:colorId",
+  requireAdminLogin,
+  upload.array("images", 5), // Accept up to 5 images
   productVariationController.addProductImage
 );
 

@@ -1,4 +1,6 @@
 require("dotenv").config();
+// Start daily silver price cron job
+require("./utility/silver-price-cron");
 const express = require("express");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
@@ -60,9 +62,7 @@ const inventory_routes = require("./routes/inventory.routes");
 
 const passport = require("./utility/passport");
 const PORT = process.env.PORT || 5000;
-const MONGO_URI =
-  process.env.MONGO_URI ??
-  "mongodb+srv://eventplanner:data123456@cluster0.guii3tm.mongodb.net/ecolove";
+const MONGO_URI = process.env.MONGO_URI;
 
 mongoose.set("strictQuery", true);
 mongoose.connect(MONGO_URI);
@@ -110,7 +110,7 @@ app.use(cookieParser({ httpOnly: true, secure: true, sameSite: "none" }));
 app.get("/", (req, res) => {
   res.status(200).json({ message: "Tribes backend server is running" });
 });
-app.listen(PORT, () => console.log(`Listening on PORT:`, PORT));
+
 const corsOptions = {
   origin: [
     "https://ecolove-website-frontend.vercel.app",
@@ -150,6 +150,9 @@ app.use(loyalty_routes);
 app.use(bulk_upload_routes);
 app.use(stripe_payment_routes);
 app.use(inventory_routes);
+// Silver price admin/manual update route
+const silver_price_routes = require("./routes/silver-price.routes");
+app.use(silver_price_routes);
 
 //wrong routes
 app.all("/", (req, res) => {
@@ -165,3 +168,6 @@ const errorHandler = (err, req, res, _next) => {
 };
 
 app.use(errorHandler);
+
+// Export the Express app for Vercel
+module.exports = app;

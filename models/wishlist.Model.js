@@ -10,7 +10,7 @@ const wishlistSchema = mongoose.Schema(
     },
     variant: {
       type: ObjectId,
-      required: true,
+      required: false, // Make variant optional since not all products have variants
       ref: "ProductVarient",
     },
     user: {

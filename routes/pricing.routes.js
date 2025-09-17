@@ -8,11 +8,6 @@ router.get("/pricing/silver/current", pricingController.getCurrentSilverPrice);
 router.post("/pricing/calculate", pricingController.calculateProductPrice);
 
 // Admin routes
-router.post("/admin/pricing/silver/update", 
-  requireAdminLogin, 
-  pricingController.forceUpdateSilverPrice
-);
-
 router.get("/admin/pricing/silver/history", 
   requireAdminLogin, 
   pricingController.getSilverPriceHistory

@@ -17,12 +17,12 @@ module.exports.addTrendingProduct_post = async (req, res) => {
     if (req?.files?.image?.length) {
       await Promise.all(
         req?.files?.image?.map(async (item, index) => {
-          const imageurl1 = await uploadOnCloudinary(req.files.image[index]);
+          const cloudinaryResult = await uploadOnCloudinary(req.files.image[index]);
+          // Only save the URL string, not the whole object
           const productImage = new Site_Trending_Product({
-            productImage: { url: imageurl1 },
+            productImage: { url: cloudinaryResult.url || cloudinaryResult.secure_url },
           });
           console.log(productImage, "<<<thisisprevimage");
-
           await productImage
             .save()
             .then((productImage) => result.push(productImage));
@@ -32,7 +32,6 @@ module.exports.addTrendingProduct_post = async (req, res) => {
     if (prevImagesParsed.length > 0) {
       await Promise.all(
         prevImagesParsed?.map(async (item) => {
-          // const imageurl1 = await uploadOnCloudinary(req.files.image[index]);
           const productImage = new Site_Trending_Product({
             productImage: { url: item },
           });
@@ -45,15 +44,6 @@ module.exports.addTrendingProduct_post = async (req, res) => {
     }
 
     console.log(prevImagesParsed, "<<<thisisprevImages");
-
-    // await Promise.all(
-    //   productImages.map(async item => {
-    //     const productImage = new Site_Trending_Product(item);
-    //     await productImage
-    //       .save()
-    //       .then(productImage => result.push(productImage));
-    //   })
-    // );
 
     if (result.length == 0)
       return successRes(res, {

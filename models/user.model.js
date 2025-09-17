@@ -29,9 +29,19 @@ const UserSchema = mongoose.Schema(
       type: Number,
       required: true,
     },
+    // For Firebase-authenticated users, we won't store a password.
     password: {
       type: String,
-      required: true,
+      required: function requiredPassword() {
+        // If firebaseUid is present, password is optional.
+        return !this.firebaseUid;
+      },
+    },
+    // Firebase UID for users authenticated via Firebase (e.g., phone OTP)
+    firebaseUid: {
+      type: String,
+      index: true,
+      sparse: true,
     },
     profileImageUrl: {
       type: String,
@@ -44,10 +54,15 @@ const UserSchema = mongoose.Schema(
       required: true,
       default: false,
     },
-    accountType: {
+      accountType: {
       type: String,
       default: "user",
     },
+      cart: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User_Cart",
+        default: null
+      },
     coupon_applied: [],
   },
   { timestamps: true }

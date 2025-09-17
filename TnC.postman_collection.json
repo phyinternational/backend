@@ -1,0 +1,101 @@
+{
+  "info": {
+    "_postman_id": "TNC-API-2025-09-17",
+    "name": "TnC API (Raajsi Backend)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Postman collection for Terms & Conditions (TnC) endpoints."
+  },
+  "item": [
+    {
+      "name": "Test Endpoint",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/content/test",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "content", "test"]
+        }
+      }
+    },
+    {
+      "name": "Create TnC Text",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"TnC\",\n  \"content\": \"Your terms and conditions here.\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/content/create",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "content", "create"]
+        }
+      }
+    },
+    {
+      "name": "Get TnC By Name",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/content/getdata?name=TnC",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "content", "getdata"],
+          "query": [
+            { "key": "name", "value": "TnC" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get All TnC Content",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/content/getallcontent",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "content", "getallcontent"]
+        }
+      }
+    },
+    {
+      "name": "Update TnC Content",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"content\": \"Updated terms and conditions.\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/content/update/{{id}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "content", "update", "{{id}}"]
+        }
+      }
+    },
+    {
+      "name": "Delete TnC Content",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/content/delete/{{id}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "content", "delete", "{{id}}"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000" },
+    { "key": "id", "value": "<put_a_valid_id_here>" }
+  ]
+}

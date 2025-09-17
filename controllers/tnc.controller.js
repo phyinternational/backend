@@ -61,16 +61,14 @@ const editData = asynchandler(async (req, res) => {
     if (!id) {
         return errorRes(res, 400, 'Invalid parameter format');
     }
-    const findData = await textDB({ _id: id });
+    const findData = await textDB.findById(id);
     if (findData) {
         const { content } = req.body;
         const updateData = {};
         if (content) {
             updateData.content = content;
         }
-
-        const updatedData = await textDB.findByIdAndUpdate({ _id: id }, updateData, { new: true });
-
+        const updatedData = await textDB.findByIdAndUpdate(id, updateData, { new: true });
         if (updatedData) {
             successRes(res, updatedData);
         }
@@ -87,12 +85,9 @@ const deleteData = asynchandler(async (req, res) => {
     if (!id) {
         return errorRes(res, 400, 'Invalid parameter format');
     }
-    const findData = await textDB({ _id: id });
+    const findData = await textDB.findById(id);
     if (findData) {
-        
-
-        const deletedData = await textDB.findByIdAndDelete({ _id: id });
-
+        const deletedData = await textDB.findByIdAndDelete(id);
         if (deletedData) {
             successRes(res, deletedData);
         }

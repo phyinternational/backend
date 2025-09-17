@@ -255,7 +255,7 @@ module.exports.convertGuestToUser = catchAsync(async (req, res) => {
 // Send order confirmation email
 module.exports.sendOrderConfirmationEmail = async (guestOrder) => {
   try {
-    const transporter = nodemailer.createTransporter({
+    const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
         user: process.env.Gmail,

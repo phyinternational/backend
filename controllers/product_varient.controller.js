@@ -91,42 +91,49 @@ module.exports.getProductVariation = catchAsync(async (req, res, next) => {
 
 module.exports.addProductImage = catchAsync(async (req, res, next) => {
   const { productId, colorId } = req.params;
-  console.log(productId, colorId);
-  const variant = await Product.findById(req.params.productId);
-  if (!variant) {
-    return res.status(400).send("No product found with that ID", 404);
+  const { uploadOnCloudinary, deleteFromCloudinary } = require("../middlewares/Cloudinary");
+  let productImage = await ProductImage.findOne({ productId, color: colorId });
+
+  const files = req.files || [];
+  let newImageUrls = [];
+  let cloudinaryPublicIds = [];
+  for (const file of files) {
+    const data = await uploadOnCloudinary(file);
+    if (data && data.secure_url) {
+      newImageUrls.push(data.secure_url);
+      cloudinaryPublicIds.push(data.public_id);
+    }
   }
 
-  const productImage = await ProductImage.findOne({
-    productId: req.params.productId,
-    color: req.params.colorId,
-  });
-
   if (productImage) {
-    productImage.imageUrls = req.body.imageUrls;
+    // Add new images to existing array
+    productImage.imageUrls.push(...newImageUrls);
     await productImage.save();
     return res.status(200).json({
       status: "success",
-      data: {
-        productImage,
-      },
+      data: { productImage }
     });
-  } else {
-    const imageUrls = await ProductImage.create({
-      productId: req.params.productId,
-      color: req.params.colorId,
-      imageUrls: req.body.imageUrls,
+  }
+
+  // Try to create ProductImage document if not exists
+  try {
+    productImage = await ProductImage.create({
+      productId,
+      color: colorId,
+      imageUrls: newImageUrls
     });
-
-    if (!imageUrls) {
-      return next(new AppError("No product found with that ID", 404));
-    }
-
     res.status(200).json({
       status: "success",
-      data: {
-        imageUrls,
-      },
+      data: { productImage }
+    });
+  } catch (err) {
+    for (const publicId of cloudinaryPublicIds) {
+      await deleteFromCloudinary(publicId);
+    }
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to save product image document. Cloudinary uploads cleaned up.",
+      error: err.message
     });
   }
 });

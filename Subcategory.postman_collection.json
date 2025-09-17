@@ -1,0 +1,422 @@
+{
+  "info": {
+    "_postman_id": "SUBCATEGORY-API-2025-09-17",
+    "name": "Subcategory API (Raajsi Backend)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Complete Postman collection for Subcategory endpoints with Zod validation (public and admin routes)"
+  },
+  "item": [
+    {
+      "name": "Public Endpoints",
+      "item": [
+        {
+          "name": "Test Subcategory API",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategory/test",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategory", "test"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Subcategories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategory/getAll?parentCategory={{parentCategoryId}}&isActive=true&search=rings&page=1&limit=10&sort=sortOrder",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategory", "getAll"],
+              "query": [
+                {
+                  "key": "parentCategory",
+                  "value": "{{parentCategoryId}}",
+                  "description": "Filter by parent category ID",
+                  "disabled": true
+                },
+                {
+                  "key": "isActive",
+                  "value": "true",
+                  "description": "Filter by active status (true/false)",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "rings",
+                  "description": "Search by name (max 100 chars)",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number (min 1)",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "description": "Items per page (1-100)",
+                  "disabled": true
+                },
+                {
+                  "key": "sort",
+                  "value": "sortOrder",
+                  "description": "Sort by: name, -name, createdAt, -createdAt, sortOrder, -sortOrder",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Single Subcategory",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategory/get/{{subcategoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategory", "get", "{{subcategoryId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Subcategories by Parent",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategory/parent/{{parentCategoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategory", "parent", "{{parentCategoryId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Subcategory Products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategory/{{subcategoryId}}/products?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategory", "{{subcategoryId}}", "products"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "description": "Items per page",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin Endpoints",
+      "item": [
+        {
+          "name": "Add Subcategory",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Silver Rings\",\n  \"slug\": \"silver-rings\",\n  \"description\": \"Beautiful collection of silver rings for all occasions\",\n  \"parentCategory\": \"{{parentCategoryId}}\",\n  \"imageUrl\": \"https://example.com/silver-rings.jpg\",\n  \"seoTitle\": \"Silver Rings Collection\",\n  \"seoDescription\": \"Shop the best silver rings collection with premium quality\",\n  \"sortOrder\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategory/add",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategory", "add"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Subcategory",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Silver Rings\",\n  \"description\": \"Updated description for silver rings collection\",\n  \"seoTitle\": \"Updated SEO Title\",\n  \"isActive\": true,\n  \"sortOrder\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategory/update/{{subcategoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategory", "update", "{{subcategoryId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Subcategory",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategory/delete/{{subcategoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategory", "delete", "{{subcategoryId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Sort Order (Bulk)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subcategories\": [\n    {\n      \"id\": \"{{subcategoryId1}}\",\n      \"sortOrder\": 1\n    },\n    {\n      \"id\": \"{{subcategoryId2}}\",\n      \"sortOrder\": 2\n    },\n    {\n      \"id\": \"{{subcategoryId3}}\",\n      \"sortOrder\": 3\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategory/sort-order",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategory", "sort-order"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Toggle Active Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategory/toggle-status/{{subcategoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategory", "toggle-status", "{{subcategoryId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Test Data Examples",
+      "item": [
+        {
+          "name": "Sample Add - Silver Jewelry",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Silver Necklaces\",\n  \"slug\": \"silver-necklaces\",\n  \"description\": \"Elegant silver necklaces for every style\",\n  \"parentCategory\": \"{{jewelryParentCategoryId}}\",\n  \"imageUrl\": \"https://images.unsplash.com/photo-1515562141207-7a88fb7ce338\",\n  \"seoTitle\": \"Silver Necklaces - Premium Collection\",\n  \"seoDescription\": \"Discover our premium silver necklaces collection\",\n  \"sortOrder\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategory/add",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategory", "add"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Sample Get with Filters",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategory/getAll?isActive=true&search=silver&page=1&limit=5&sort=name",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategory", "getAll"],
+              "query": [
+                {
+                  "key": "isActive",
+                  "value": "true"
+                },
+                {
+                  "key": "search",
+                  "value": "silver"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                },
+                {
+                  "key": "sort",
+                  "value": "name"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-generate timestamps for tracking",
+          "pm.globals.set('timestamp', new Date().toISOString());"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Basic response tests",
+          "pm.test('Status code is successful', function () {",
+          "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+          "});",
+          "",
+          "pm.test('Response has success field', function () {",
+          "    const jsonData = pm.response.json();",
+          "    pm.expect(jsonData).to.have.property('success');",
+          "});",
+          "",
+          "pm.test('Response time is less than 2000ms', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "parentCategoryId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "subcategoryId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "subcategoryId1",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "subcategoryId2",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "subcategoryId3",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "jewelryParentCategoryId",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

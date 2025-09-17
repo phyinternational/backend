@@ -10,10 +10,12 @@ const productSchema = new mongoose.Schema({
     index: true,
   },
   skuNo: { type: String, required: true, minlength: 1, unique: true },
-  category: { type: mongoose.Schema.Types.ObjectId, ref: "category" },
+  category: { type: mongoose.Schema.Types.ObjectId, ref: "ProductCategory" },
+  color: { type: mongoose.Schema.Types.ObjectId, ref: "Product_Color" },
   regularPrice: { type: Number, required: true, default: 0 },
   salePrice: { type: Number, required: true, default: 0 },
   isActive: { type: Boolean, default: false },
+  isFeatured: { type: Boolean, default: false },
   productDescription: {
     type: String,
     required: true,
@@ -22,10 +24,10 @@ const productSchema = new mongoose.Schema({
   },
   careHandling: { type: String, required: true, minlength: 1, default: "NA" },
   gst: { type: Number, default: 18 }, // Updated default GST for jewelry
-  productImageUrl: {
+  productImageUrl: [{
     type: String,
-    optional: true,
-  },
+    optional: true
+  }],
   sizeChartUrl: { type: String },
   brand: { type: mongoose.Schema.Types.ObjectId, ref: "Brand" },
   

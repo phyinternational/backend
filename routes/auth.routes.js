@@ -12,17 +12,16 @@ router.post("/admin/signup", auth_controller.adminSignup_post);
 router.post("/admin/signin", auth_controller.adminSignin_post);
 router.post("/user/signup", auth_controller.userSignup_post);
 router.post("/user/signin", auth_controller.userSignin_post);
+router.post("/user/firebase-login", auth_controller.firebaseLogin_post);
 router.get("/user/current", requireAdminLogin, auth_controller.getAdminData);
 router.get("/user/getData", requireUserLogin, auth_controller.getUserData);
 router.get("/user/constants", auth_controller.getConstantData);
 router.post("/user/constants", requireAdminLogin,auth_controller.updateConstansts);
 
-router.get("/logout", (req, res) => {
-  res.clearCookie("token");
-  res.send({
-    message: "User logged out successfully",
-  });
-});
+// Legacy logout cleaned up and specific endpoints added
+router.get("/logout", auth_controller.logoutAll_get); // clears user_token, admin_token, and legacy token
+router.get("/user/logout", auth_controller.userLogout_get);
+router.get("/admin/logout", auth_controller.adminLogout_get);
 
 router.get("/admin/dashboard",requireAdminLogin,auth_controller.dashboardData);
 router.get("/admin/constant",requireUserLogin,auth_controller.getConstantData);

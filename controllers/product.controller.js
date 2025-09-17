@@ -21,9 +21,28 @@ const cacheService = require("../services/cache.service");
 const Inventory = require("../models/inventory.model");
 
 module.exports.addProduct_post = catchAsync(async (req, res) => {
-  const { product: productData } = req.body;
+  // Parse product data from form-data
+  let productData;
+  if (req.body.product) {
+    try {
+      productData = JSON.parse(req.body.product);
+    } catch (err) {
+      return errorRes(res, 400, "Invalid product data JSON.");
+    }
+  } else {
+    productData = req.body;
+  }
 
   if (!productData) return errorRes(res, 400, "Product details are required.");
+
+  // Parse gemstones if sent as string (from form-data)
+  if (productData.gemstones && typeof productData.gemstones === 'string') {
+    try {
+      productData.gemstones = JSON.parse(productData.gemstones);
+    } catch (e) {
+      productData.gemstones = [];
+    }
+  }
 
   if (productData.productSlug) {
     const findSlug = await Product.findOne({
@@ -40,25 +59,44 @@ module.exports.addProduct_post = catchAsync(async (req, res) => {
     }
   }
 
+  // Handle image uploads
+  const files = req.files || [];
+  const { uploadOnCloudinary, deleteFromCloudinary } = require("../middlewares/Cloudinary");
+  let imageUrls = [];
+  let cloudinaryPublicIds = [];
+  for (const file of files) {
+    const data = await cloudinary.uploader.upload(file.path);
+    if (data && data.secure_url) {
+      imageUrls.push(data.secure_url);
+      cloudinaryPublicIds.push(data.public_id);
+    }
+  }
+  productData.productImageUrl = imageUrls;
+
   const product = new Product(productData);
 
-  await product
-    .save()
-    .then((savedProd) => {
-      if (!savedProd)
-        return errorRes(res, 400, "Internal server error. Please try again.");
-      else {
-        Product.findById(savedProd._id)
-          .select("-__v")
-          .then((result) =>
-            successRes(res, {
-              product: result,
-              message: "Product added successfully.",
-            })
-          );
+  try {
+    const savedProd = await product.save();
+    if (!savedProd) {
+      // Cleanup images if product not saved
+      for (const publicId of cloudinaryPublicIds) {
+        await deleteFromCloudinary(publicId);
       }
-    })
-    .catch((err) => internalServerError(res, err));
+      return errorRes(res, 400, "Internal server error. Please try again.");
+    } else {
+      const result = await Product.findById(savedProd._id).select("-__v");
+      return successRes(res, {
+        product: result,
+        message: "Product added successfully.",
+      });
+    }
+  } catch (err) {
+    // Cleanup images if product creation fails
+    for (const publicId of cloudinaryPublicIds) {
+      await deleteFromCloudinary(publicId);
+    }
+    return internalServerError(res, err);
+  }
 });
 
 const bulkAddProducts = catchAsync(async function (products) {
@@ -104,6 +142,31 @@ const bulkAddProducts = catchAsync(async function (products) {
   }));
 
   await ProductVariant.insertMany(bulkVarients);
+    const { uploadOnCloudinary } = require("../middlewares/Cloudinary");
+    for (const product of products) {
+      // Handle product images
+      if (product.images && Array.isArray(product.images)) {
+        let imageUrls = [];
+        for (const file of product.images) {
+          const url = await uploadOnCloudinary(file);
+          if (url) imageUrls.push(url);
+        }
+        product.productImageUrl = imageUrls;
+      }
+      // Handle variant images
+      if (product.varients && Array.isArray(product.varients)) {
+        for (const variant of product.varients) {
+          if (variant.images && Array.isArray(variant.images)) {
+            let variantImageUrls = [];
+            for (const file of variant.images) {
+              const url = await uploadOnCloudinary(file);
+              if (url) variantImageUrls.push(url);
+            }
+            variant.imageUrls = variantImageUrls;
+          }
+        }
+      }
+    }
 });
 
 module.exports.uploadProductBulk = catchAsync(async (req, res) => {
@@ -308,7 +371,7 @@ module.exports.filterProducts_post = async (req, res) => {
     const products = await Product.find({
       $or: combinedQuery,
     })
-      .populate("color product_category")
+      .populate("color category")
       .sort(sortQuery);
     return successRes(res, { products });
   } catch (err) {
@@ -317,10 +380,13 @@ module.exports.filterProducts_post = async (req, res) => {
 };
 
 module.exports.randomProducts_get = async (req, res) => {
-  const { limit } = req.params;
+  const limit = Number(req.params.limit); // Convert to number
+  if (isNaN(limit) || limit <= 0) {
+    return errorRes(res, 400, "Invalid limit parameter.");
+  }
 
   Product.find()
-    .populate("product_category color")
+    .populate("category color")
     .limit(limit)
     .then((products) => successRes(res, { products }))
     .catch((err) => internalServerError(res, err));

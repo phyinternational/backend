@@ -2,6 +2,7 @@ const express = require("express");
 const {
   allProductRating_get,
   addProductRating,
+  getProductRatings_get,
 } = require("../controllers/product-rating.controller");
 const { requireUserLogin } = require("../middlewares/requireLogin");
 const productRatingValidation = require("../validation/product-rating");
@@ -17,8 +18,6 @@ router.post(
   addProductRating
 );
 
-router.get("/product/:id/rating", (req, res) => {
-  res.status(200).json({ message: "Product Rating Single" });
-});
+router.get("/product/:id/rating", getProductRatings_get);
 
 module.exports = router;

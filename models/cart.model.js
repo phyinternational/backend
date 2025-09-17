@@ -13,7 +13,7 @@ const ItemSchema = mongoose.Schema({
   },
   varientId: {
     type: mongoose.Schema.Types.ObjectId,
-    required: [true, "product Id is required"],
+    required: false,
     ref: "ProductVarient",
   },
 });

@@ -11,7 +11,13 @@ const Product = require("../models/product.model");
 const getAllNestedSubcategories = require("../utility/utils");
 
 module.exports.addProductCategory_post = catchAsync(async (req, res) => {
-  const { type, name, imageUrl, slug, parentId = null } = req.body;
+  const { type, name, slug, parentId = null } = req.body;
+  let imageUrl = req.body.imageUrl;
+
+  // Handle image upload if file is present
+  if (req.file) {
+    imageUrl = await uploadOnCloudinary(req.file);
+  }
 
   if (!type || !name || !imageUrl || !slug) {
     return errorRes(res, 400, "All fields are required.");
@@ -24,7 +30,6 @@ module.exports.addProductCategory_post = catchAsync(async (req, res) => {
   if (existingCategory) {
     return errorRes(res, 400, "Category with given Slug already exists.");
   }
-  
   // Fix: Convert empty string parentId to null to avoid MongoDB ObjectId casting errors
   const finalParentId = parentId === "" ? null : parentId;
 
@@ -57,6 +62,13 @@ module.exports.addProductCategory_post = catchAsync(async (req, res) => {
 
 module.exports.addSubCategory_post = catchAsync(async (req, res) => {
   const { name, slug, parentId } = req.body;
+  let imageUrl = req.body.imageUrl;
+
+  // Handle image upload if file is present
+  if (req.file) {
+    imageUrl = await uploadOnCloudinary(req.file);
+  }
+
   if (!name || !parentId) {
     return errorRes(res, 400, "All fields are required.");
   }
@@ -69,7 +81,7 @@ module.exports.addSubCategory_post = catchAsync(async (req, res) => {
     return errorRes(res, 400, "Category with given name already exists.");
   }
 
-  const category = new ProductCategory({ name, parentId });
+  const category = new ProductCategory({ name, slug, parentId, imageUrl });
   const savedCategory = await category.save();
 
   const { name: savedName, parentId: savedParentId, _id } = savedCategory;
@@ -126,13 +138,20 @@ module.exports.deleteProductCategory_delete = async (req, res) => {
 };
 module.exports.editCategory = catchAsync(async (req, res) => {
   const { categoryId } = req.params;
-  const { name, imageUrl } = req.body;
+  const { name } = req.body;
+  let imageUrl = req.body.imageUrl;
   if (!categoryId) return errorRes(res, 400, "Category ID is required.");
   if (!name) return errorRes(res, 400, "Category name is required.");
   const category = await ProductCategory.findById(categoryId);
   if (!category) return errorRes(res, 400, "Category does not exist.");
+
+  // Handle image upload if file is present
+  if (req.file) {
+    imageUrl = await uploadOnCloudinary(req.file);
+  }
+
   category.name = name;
-  category.imageUrl = imageUrl;
+  if (imageUrl) category.imageUrl = imageUrl;
 
   const updatedCategory = await category.save();
   return successRes(res, {
@@ -185,4 +204,18 @@ module.exports.getCategoryProducts_get = catchAsync(async (req, res) => {
     currentPage: products.page,
     limit: products.limit,
   });
+});
+
+module.exports.getAllSubcategories = catchAsync(async (req, res) => {
+  // Find all categories that have a parentId (i.e., subcategories)
+  const subcategories = await ProductCategory.find({ parentId: { $ne: null } }).sort({ createdAt: 1 });
+  return successRes(res, { subcategories });
+});
+
+module.exports.getASubcategory = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  if (!id) return errorRes(res, 400, "Subcategory ID is required.");
+  const subcategory = await ProductCategory.findOne({ _id: id, parentId: { $ne: null } });
+  if (!subcategory) return errorRes(res, 404, "Subcategory not found.");
+  return successRes(res, { subcategory });
 });

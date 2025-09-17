@@ -8,6 +8,7 @@ const {
 } = require("../middlewares/requireLogin");
 const validate = require("../validation/validate");
 const { upsertCartSchema, postCartItem, deleteCartItem } = require("../validation/user-cart");
+
 router.get("/user/cart", requireUserLogin, cart_controller.getCartDetails_get);
 router.get(
   "/admin/user/cart/:userId",

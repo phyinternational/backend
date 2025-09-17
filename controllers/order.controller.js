@@ -93,6 +93,11 @@ module.exports.userOrderDetails_get = catchAsync(async (req, res) => {
   const { _id: userId } = req.user;
 
   if (!orderId) return errorRes(res, 400, "Order Id is required.");
+  
+  // Validate ObjectId format
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    return errorRes(res, 400, "Invalid Order ID format.");
+  }
 
   const order = await User_Order.findById(orderId).populate([
     { path: "buyer", select: "_id displayName email" },
@@ -119,6 +124,11 @@ module.exports.adminOrderDetails_get = catchAsync(async (req, res) => {
   const orderId = req.params.orderId ?? "";
 
   if (!Boolean(orderId)) return errorRes(res, 400, "Order Id is required.");
+  
+  // Validate ObjectId format
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    return errorRes(res, 400, "Invalid Order ID format.");
+  }
 
   const order = await User_Order.findById(orderId).populate([
     { path: "buyer", select: "_id displayName email" },
@@ -212,6 +222,11 @@ module.exports.updateOrder_post = catchAsync( async (req, res) => {
   const updates = {};
 
   if (!orderId) return errorRes(res, 400, "Order Id is required.");
+  
+  // Validate ObjectId format
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    return errorRes(res, 400, "Invalid Order ID format.");
+  }
   if (payment_status) updates.payment_status = payment_status;
   if (order_status) updates.order_status = order_status;
 
@@ -254,6 +269,11 @@ module.exports.userOrderUpadte_put = catchAsync(async (req, res) => {
   const { products } = req.body;
 
   if (!orderId) return errorRes(res, 400, "Order Id is required.");
+  
+  // Validate ObjectId format
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    return errorRes(res, 400, "Invalid Order ID format.");
+  }
 
   const order = await User_Order.findById(orderId);
 

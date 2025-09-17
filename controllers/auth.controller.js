@@ -16,6 +16,7 @@ const ProductCategory = require("../models/product_category.model");
 const Constant = require("../models/constant.model");
 const JWT_SECRET_ADMIN = process.env.JWT_SECRET_ADMIN;
 const JWT_SECRET_USER = process.env.JWT_SECRET_USER;
+const { ensureFirebaseAdmin } = require("../services/firebase-admin");
 
 module.exports.adminSignup_post = catchAsync(async (req, res) => {
   const { name, email, password } = req.body;
@@ -237,6 +238,108 @@ module.exports.userSignin_post = async (req, res) => {
     .catch((err) => internalServerError(res, err));
 };
 
+// Verify Firebase ID token (from frontend phone OTP auth) and issue app JWT cookie
+module.exports.firebaseLogin_post = catchAsync(async (req, res) => {
+  const { idToken, displayName, email, phoneNumber, photoURL } = req.body || {};
+  if (!idToken) return errorRes(res, 400, "Missing Firebase ID token.");
+
+  const admin = ensureFirebaseAdmin();
+  if (!admin || !admin.apps?.length) {
+    return errorRes(
+      res,
+      500,
+      "Auth service unavailable. Contact support (Firebase not configured)."
+    );
+  }
+
+  let decoded;
+  try {
+    decoded = await admin.auth().verifyIdToken(idToken);
+  } catch (e) {
+    return errorRes(res, 401, "Invalid or expired Firebase ID token.");
+  }
+
+  const { uid, phone_number: firebasePhone, email: firebaseEmail, name } = decoded;
+
+  // Find or create our local user
+  let user = await User.findOne({ firebaseUid: uid });
+
+  if (!user) {
+    // Try to match by email or phone if present
+    const query = [];
+    if (firebaseEmail || email) query.push({ email: firebaseEmail || email });
+    if (firebasePhone || phoneNumber) query.push({ phoneNumber: (firebasePhone || phoneNumber || '').replace(/[^0-9]/g, '') });
+
+    if (query.length) {
+      user = await User.findOne({ $or: query });
+    }
+
+    if (user) {
+      user.firebaseUid = uid;
+      if (!user.phoneNumber && (firebasePhone || phoneNumber)) {
+        user.phoneNumber = String(firebasePhone || phoneNumber).replace(/[^0-9]/g, '');
+      }
+      if (!user.name && (displayName || name)) user.name = displayName || name;
+      if (!user.email && (firebaseEmail || email)) user.email = (firebaseEmail || email).toLowerCase();
+      if (!user.profileImageUrl && photoURL) user.profileImageUrl = photoURL;
+      await user.save();
+    } else {
+      // Create new user with minimal fields
+      user = new User({
+        name: displayName || name || "",
+        email: (firebaseEmail || email || `user_${uid}@placeholder.local`).toLowerCase(),
+        phoneNumber: String(firebasePhone || phoneNumber || "").replace(/[^0-9]/g, ''),
+        firebaseUid: uid,
+      });
+
+      // Ensure a cart exists
+      const newCart = new User_Cart({ userId: user._id, products: [] });
+      const cart = await newCart.save();
+      user.cart = cart._id;
+      await user.save();
+    }
+  }
+
+  if (user.isBlocked) return errorRes(res, 403, "User blocked by admin.");
+
+  const token = jwt.sign({ _id: user._id, role: "user" }, JWT_SECRET_USER);
+  res.cookie("user_token", token, {
+    httpOnly: true,
+    maxAge: 1000 * 60 * 60 * 24,
+  });
+
+  const {
+    _id,
+    name: uName,
+    displayImage,
+    cart,
+    shippingAddress,
+    email: uEmail,
+    phoneNumber: uPhone,
+    accountType,
+    coupon_applied,
+    isBlocked,
+  } = user;
+
+  return successRes(res, {
+    user: {
+      _id,
+      name: uName,
+      displayImage,
+      email: uEmail,
+      contactNumber: uPhone,
+      accountType,
+      phoneNumber: uPhone,
+      isBlocked,
+      cart,
+      coupon_applied,
+      shippingAddress,
+      token,
+    },
+    message: "Signin success.",
+  });
+});
+
 module.exports.dashboardData = catchAsync(async (req, res) => {
   const orderMetrics = [
     { title: "Total Orders", value: "0." },
@@ -336,4 +439,38 @@ exports.getUserData = (req, res) => {
     status: "success",
     userData,
   });
+};
+
+// Logout endpoints
+module.exports.userLogout_get = (req, res) => {
+  try {
+    // Clear user cookie used by app auth
+    res.clearCookie("user_token");
+    // Also clear legacy Google cookie if present
+    res.clearCookie("token", { sameSite: "none", secure: true });
+    return successRes(res, { message: "User logged out successfully." });
+  } catch (e) {
+    return errorRes(res, 500, "Failed to logout user.");
+  }
+};
+
+module.exports.adminLogout_get = (req, res) => {
+  try {
+    // Clear admin cookie with matching attributes
+    res.clearCookie("admin_token", { sameSite: "none", secure: true });
+    return successRes(res, { message: "Admin logged out successfully." });
+  } catch (e) {
+    return errorRes(res, 500, "Failed to logout admin.");
+  }
+};
+
+module.exports.logoutAll_get = (req, res) => {
+  try {
+    res.clearCookie("user_token");
+    res.clearCookie("admin_token", { sameSite: "none", secure: true });
+    res.clearCookie("token", { sameSite: "none", secure: true });
+    return successRes(res, { message: "Logged out." });
+  } catch (e) {
+    return errorRes(res, 500, "Failed to logout.");
+  }
 };

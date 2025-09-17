@@ -11,7 +11,7 @@ const categorySchema = new mongoose.Schema(
     },
     parentId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Category", // Reference the "Category" model
+      ref: "ProductCategory", // Reference the "ProductCategory" model
     },
     imageUrl: String,
   },
@@ -20,6 +20,6 @@ const categorySchema = new mongoose.Schema(
   }
 );
 
-mongoose.model("category", categorySchema);
-const ProductCategory = mongoose.model("category");
+mongoose.model("ProductCategory", categorySchema);
+const ProductCategory = mongoose.model("ProductCategory");
 module.exports = ProductCategory;
