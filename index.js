@@ -108,7 +108,7 @@ app.use(express.json({ extended: true, limit: '10mb' }));
 app.use(cookieParser({ httpOnly: true, secure: true, sameSite: "none" }));
 
 app.get("/", (req, res) => {
-  res.status(200).json({ message: "Tribes backend server is running" });
+  res.status(200).json({ message: "Raajsi backend server is running" });
 });
 
 const corsOptions = {
