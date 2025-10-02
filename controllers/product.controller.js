@@ -18,7 +18,7 @@ const ProductImage = require("../models/product_images");
 const cacheService = require("../services/cache.service");
 const Inventory = require("../models/inventory.model");
 const { uploadOnCloudinary, deleteFromCloudinary } = require("../middlewares/Cloudinary");
-
+const cloudinary = require("cloudinary").v2;
 module.exports.addProduct_post = catchAsync(async (req, res) => {
   // Parse product data from form-data
   let productData;
