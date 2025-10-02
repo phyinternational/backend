@@ -64,15 +64,4 @@ router.put(
   productController.updateFeatured
 );
 
-// New jewelry-specific routes
-router.put("/admin/product/:productId/update-pricing", 
-  requireAdminLogin, 
-  productController.updateProductPricing
-);
-
-router.post("/admin/product/bulk-update-pricing", 
-  requireAdminLogin, 
-  productController.bulkUpdatePricing
-);
-
 module.exports = router;

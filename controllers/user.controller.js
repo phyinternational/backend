@@ -427,7 +427,7 @@ module.exports.getEnhancedDashboard = catchAsync(async (req, res) => {
     const recentOrders = await User_Order.find({ buyer: userId })
       .sort({ createdAt: -1 })
       .limit(5)
-      .populate("products.product", "productTitle silverWeight");
+      .populate("products.product", "productTitle");
 
     // Get wishlist count
     const Wishlist = require("../models/wishlist.Model");

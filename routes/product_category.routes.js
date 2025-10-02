@@ -53,11 +53,11 @@ router.get(
 );
 router.get("/product/category/all", categoryController.allCategory_get);
 router.get(
-  "/product/subcatagory/all",
+  "/product/subcategory/all",
   categoryController.getAllSubcategories
 );
 router.get(
-  "/product/subcatagory/getasub/:id",
+  "/product/subcategory/getasub/:id",
   categoryController.getASubcategory
 );
 

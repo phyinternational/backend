@@ -29,8 +29,6 @@ const guestOrderSchema = new mongoose.Schema({
         default: null,
       },
       priceBreakdown: {
-        silverCost: Number,
-        laborCost: Number,
         gstAmount: Number,
         finalPrice: Number
       }

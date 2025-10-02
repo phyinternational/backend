@@ -1,10 +1,8 @@
 const GuestOrder = require("../models/guest-order.model");
 const Product = require("../models/product.model");
-const silverPriceService = require("../services/silver-price.service");
 const { successRes, errorRes, internalServerError } = require("../utility");
 const catchAsync = require("../utility/catch-async");
 const crypto = require("crypto");
-const nodemailer = require("nodemailer");
 
 // Place guest order
 module.exports.placeGuestOrder = catchAsync(async (req, res) => {
@@ -127,8 +125,9 @@ module.exports.placeGuestOrder = catchAsync(async (req, res) => {
     savedOrder.conversionToken.expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
     await savedOrder.save();
 
-    // Send order confirmation email with account creation link
-    await this.sendOrderConfirmationEmail(savedOrder);
+  // Send order confirmation email with account creation link (non-blocking)
+  const emailService = require('../services/email.service');
+  emailService.sendGuestOrderConfirmation(savedOrder).catch(err => console.error(err));
 
     successRes(res, {
       order: savedOrder,
@@ -253,38 +252,4 @@ module.exports.convertGuestToUser = catchAsync(async (req, res) => {
 });
 
 // Send order confirmation email
-module.exports.sendOrderConfirmationEmail = async (guestOrder) => {
-  try {
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.Gmail,
-        pass: process.env.Gmailpass
-      }
-    });
-
-    const accountCreationLink = `${process.env.CLIENT_URL}/create-account?token=${guestOrder.conversionToken}`;
-
-    const mailOptions = {
-      from: process.env.Gmail,
-      to: guestOrder.guestInfo.email,
-      subject: `Order Confirmation - ${guestOrder._id}`,
-      html: `
-        <h2>Thank you for your order!</h2>
-        <p>Dear ${guestOrder.guestInfo.firstName},</p>
-        <p>Your order has been placed successfully.</p>
-        <p><strong>Order ID:</strong> ${guestOrder._id}</p>
-        <p><strong>Total Amount:</strong> ₹${guestOrder.orderTotal.finalAmount}</p>
-        <p><strong>Create an account to track your order and earn loyalty points:</strong></p>
-        <a href="${accountCreationLink}" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Create Account</a>
-        <p>This link will expire in 7 days.</p>
-        <p>Thank you for shopping with us!</p>
-      `
-    };
-
-    await transporter.sendMail(mailOptions);
-    console.log("Order confirmation email sent successfully");
-  } catch (error) {
-    console.error("Error sending order confirmation email:", error);
-  }
-};
+// sendOrderConfirmationEmail moved to services/email.service.js

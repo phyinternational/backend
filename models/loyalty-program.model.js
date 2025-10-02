@@ -4,7 +4,7 @@ const loyaltyProgramSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
-    default: "Silver Rewards"
+    default: "Rewards"
   },
   pointsPerRupee: {
     type: Number,
@@ -18,7 +18,7 @@ const loyaltyProgramSchema = new mongoose.Schema({
   tiers: [{
     name: {
       type: String,
-      required: true // Bronze, Silver, Gold, Platinum
+      required: true //
     },
     minPoints: {
       type: Number,

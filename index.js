@@ -1,6 +1,4 @@
 require("dotenv").config();
-// Start daily silver price cron job
-require("./utility/silver-price-cron");
 const express = require("express");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
@@ -28,7 +26,6 @@ require("./models/site_trending_product.model");
 require("./models/brand-model").default;
 
 // Import new models
-require("./models/silver-price.model");
 require("./models/guest-order.model");
 require("./models/loyalty-program.model");
 require("./models/user-loyalty.model");
@@ -53,7 +50,6 @@ const tnc_routes = require("./routes/tnc.routes");
 const notification_routes = require("./routes/notification.routes");
 
 // Import new routes
-const pricing_routes = require("./routes/pricing.routes");
 const guest_checkout_routes = require("./routes/guest-checkout.routes");
 const loyalty_routes = require("./routes/loyalty.routes");
 const bulk_upload_routes = require("./routes/bulk-upload.routes");
@@ -79,7 +75,6 @@ database.once("connected", () => {
     console.warn("Cache service initialization failed:", error.message);
   });
   
-  console.log("Silver price will be managed manually by admin.");
 });
 
 const app = express();
@@ -144,15 +139,11 @@ app.use(product_varient_routes);
 app.use(tnc_routes);
 
 // Use new routes
-app.use(pricing_routes);
 app.use(guest_checkout_routes);
 app.use(loyalty_routes);
 app.use(bulk_upload_routes);
 app.use(stripe_payment_routes);
 app.use(inventory_routes);
-// Silver price admin/manual update route
-const silver_price_routes = require("./routes/silver-price.routes");
-app.use(silver_price_routes);
 
 //wrong routes
 app.all("/", (req, res) => {

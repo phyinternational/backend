@@ -7,7 +7,6 @@ const {
   shortIdChar,
 } = require("../utility");
 const shortid = require("shortid");
-const { deleteFromCloudinary } = require("../middlewares/Cloudinary");
 const catchAsync = require("../utility/catch-async");
 const { buildPaginatedSortedFilteredQuery } = require("../utility/mogoose");
 const Product = require("../models/product.model");
@@ -16,9 +15,9 @@ const ProductVariant = require("../models/product_varient");
 const { Product_Color } = require("../models/product_color.model");
 const namedColors = require("color-name-list");
 const ProductImage = require("../models/product_images");
-const silverPriceService = require("../services/silver-price.service");
 const cacheService = require("../services/cache.service");
 const Inventory = require("../models/inventory.model");
+const { uploadOnCloudinary, deleteFromCloudinary } = require("../middlewares/Cloudinary");
 
 module.exports.addProduct_post = catchAsync(async (req, res) => {
   // Parse product data from form-data
@@ -34,15 +33,6 @@ module.exports.addProduct_post = catchAsync(async (req, res) => {
   }
 
   if (!productData) return errorRes(res, 400, "Product details are required.");
-
-  // Parse gemstones if sent as string (from form-data)
-  if (productData.gemstones && typeof productData.gemstones === 'string') {
-    try {
-      productData.gemstones = JSON.parse(productData.gemstones);
-    } catch (e) {
-      productData.gemstones = [];
-    }
-  }
 
   if (productData.productSlug) {
     const findSlug = await Product.findOne({
@@ -61,7 +51,6 @@ module.exports.addProduct_post = catchAsync(async (req, res) => {
 
   // Handle image uploads
   const files = req.files || [];
-  const { uploadOnCloudinary, deleteFromCloudinary } = require("../middlewares/Cloudinary");
   let imageUrls = [];
   let cloudinaryPublicIds = [];
   for (const file of files) {
@@ -510,92 +499,3 @@ module.exports.getFeaturedProducts = async (req, res) => {
     internalServerError(res, "Internal server error.");
   }
 };
-
-// Add method to calculate and update product prices
-module.exports.updateProductPricing = catchAsync(async (req, res) => {
-  try {
-    const { productId } = req.params;
-    
-    const product = await Product.findById(productId);
-    if (!product) {
-      return errorRes(res, 404, "Product not found");
-    }
-
-    if (product.isDynamicPricing && product.silverWeight > 0) {
-      const priceCalculation = await silverPriceService.calculateDynamicPrice(
-        product.silverWeight,
-        product.laborPercentage,
-        product.gst
-      );
-
-      // Update product with new price breakdown
-      product.priceBreakdown = {
-        ...priceCalculation.breakdown,
-        lastCalculated: new Date()
-      };
-      
-      // Update the sale price with calculated price
-      product.salePrice = priceCalculation.finalPrice;
-      
-      await product.save();
-
-      successRes(res, {
-        product,
-        priceCalculation,
-        message: "Product pricing updated successfully"
-      });
-    } else {
-      successRes(res, {
-        product,
-        message: "Product uses static pricing"
-      });
-    }
-  } catch (error) {
-    console.error("Error updating product pricing:", error);
-    internalServerError(res, "Error updating product pricing");
-  }
-});
-
-// Bulk update all products with dynamic pricing
-module.exports.bulkUpdatePricing = catchAsync(async (req, res) => {
-  try {
-    const products = await Product.find({ 
-      isDynamicPricing: true,
-      silverWeight: { $gt: 0 }
-    });
-
-    let updatedCount = 0;
-    const errors = [];
-
-    for (const product of products) {
-      try {
-        const priceCalculation = await silverPriceService.calculateDynamicPrice(
-          product.silverWeight,
-          product.laborPercentage,
-          product.gst
-        );
-
-        product.priceBreakdown = {
-          ...priceCalculation.breakdown,
-          lastCalculated: new Date()
-        };
-        
-        product.salePrice = priceCalculation.finalPrice;
-        await product.save();
-        updatedCount++;
-      } catch (error) {
-        errors.push({ productId: product._id, error: error.message });
-      }
-    }
-
-    successRes(res, {
-      updatedCount,
-      totalProducts: products.length,
-      errors,
-      message: `Successfully updated ${updatedCount} products`
-    });
-  } catch (error) {
-    console.error("Error bulk updating pricing:", error);
-    internalServerError(res, "Error bulk updating pricing");
-  }
-});

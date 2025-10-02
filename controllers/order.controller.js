@@ -58,6 +58,16 @@ module.exports.placeOrder_post = catchAsync(async (req, res) => {
     buyer: userId,
   });
 
+  // Send order confirmation email (fire-and-forget)
+  try {
+    const emailService = require('../services/email.service');
+    // attempt to populate buyer email if not present
+    const user = await User.findById(userId).select('email name');
+    emailService.sendOrderConfirmation(order, user).catch(err => console.error(err));
+  } catch (err) {
+    console.error('Error triggering order confirmation email', err);
+  }
+
   return successRes(res, {
     message: "Order placed successfully.",
     data: order,
@@ -409,15 +419,24 @@ module.exports.rzpPaymentVerification = async (req, res) => {
               select: "_id code condition min_price discount_percent is_active",
             },
           ])
-          .then((result) =>
+          .then(async (result) => {
+            // send email confirmation
+            try {
+              const emailService = require('../services/email.service');
+              const user = await User.findById(userId).select('email name');
+              emailService.sendOrderConfirmation(result, user).catch(e => console.error(e));
+            } catch (e) {
+              console.error('Error triggering email after rzp payment', e);
+            }
+
             successRes(res, {
               order: result,
               orderId: razorpayOrderId,
               paymentId: razorpayPaymentId,
               updatedCart,
               message: "Order placed successfully.",
-            })
-          );
+            });
+          });
       })
       .catch((err) => internalServerError(res, err));
   } catch (error) {
@@ -594,7 +613,7 @@ module.exports.ccavenueresponsehandler = async (request, response) => {
       await User_Order.findByIdAndUpdate(orderData.order_id, orderUpdates, {
         new: true,
       })
-        .then(async (updatedOrder) => {
+          .then(async (updatedOrder) => {
           console.log(updatedOrder, "<<<updated Order");
           // update products' availability
           // await Promise.all(
@@ -612,6 +631,13 @@ module.exports.ccavenueresponsehandler = async (request, response) => {
           const cart = await User_Cart.findOne({ user: updatedOrder.buyer });
           cart.products = [];
           await cart.save();
+          try {
+            const emailService = require('../services/email.service');
+            const user = await User.findById(updatedOrder.buyer).select('email name');
+            emailService.sendOrderConfirmation(updatedOrder, user).catch(e => console.error(e));
+          } catch (e) {
+            console.error('Error triggering email after ccavenue payment', e);
+          }
         })
         .catch((err) => console.log(err));
 

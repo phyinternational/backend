@@ -8,7 +8,6 @@ const ProductCategory = require("../models/product_category.model");
 const Brand = require("../models/brand-model");
 const { successRes, errorRes, internalServerError } = require("../utility");
 const catchAsync = require("../utility/catch-async");
-const silverPriceService = require("../services/silver-price.service");
 
 // Bulk upload products from CSV/Excel
 module.exports.bulkUploadProducts = catchAsync(async (req, res) => {
@@ -150,10 +149,6 @@ function validateProductData(data, rowNumber) {
     errors.push("SKU number is required");
   }
   
-  if (!data.silverWeight || isNaN(parseFloat(data.silverWeight))) {
-    errors.push("Valid silver weight is required");
-  }
-  
   if (!data.category || data.category.trim() === '') {
     errors.push("Category is required");
   }
@@ -167,9 +162,6 @@ function validateProductData(data, rowNumber) {
     errors.push("Sale price must be a valid number");
   }
   
-  if (data.laborPercentage && isNaN(parseFloat(data.laborPercentage))) {
-    errors.push("Labor percentage must be a valid number");
-  }
 
   return {
     isValid: errors.length === 0,
@@ -220,24 +212,6 @@ async function createProductFromData(data) {
     slugCounter++;
   }
 
-  // Calculate dynamic price if silver weight is provided
-  let calculatedPrice = 0;
-  let priceBreakdown = {};
-  
-  if (data.silverWeight && parseFloat(data.silverWeight) > 0) {
-    try {
-      const priceCalc = await silverPriceService.calculateDynamicPrice(
-        parseFloat(data.silverWeight),
-        parseFloat(data.laborPercentage) || 0,
-        parseFloat(data.gst) || 18
-      );
-      calculatedPrice = priceCalc.finalPrice;
-      priceBreakdown = priceCalc.breakdown;
-    } catch (error) {
-      console.warn("Could not calculate dynamic price:", error.message);
-    }
-  }
-
   // Create product
   const product = new Product({
     productTitle: data.productTitle.trim(),
@@ -251,17 +225,6 @@ async function createProductFromData(data) {
     careHandling: data.careHandling || "Standard care instructions",
     gst: parseFloat(data.gst) || 18,
     
-    // Jewelry specific fields
-    silverWeight: parseFloat(data.silverWeight) || 0,
-    laborPercentage: parseFloat(data.laborPercentage) || 0,
-    isDynamicPricing: data.isDynamicPricing === 'true' || data.isDynamicPricing === true,
-    staticPrice: parseFloat(data.staticPrice) || 0,
-    metalPurity: data.metalPurity || '925',
-    makingCharges: parseFloat(data.makingCharges) || 0,
-    priceBreakdown: Object.keys(priceBreakdown).length > 0 ? {
-      ...priceBreakdown,
-      lastCalculated: new Date()
-    } : undefined,
     
     isActive: data.isActive === 'true' || data.isActive === true || true // Default to active
   });
@@ -321,42 +284,43 @@ module.exports.downloadSampleTemplate = catchAsync(async (req, res) => {
   try {
     const sampleData = [
       {
-        productTitle: "Silver Ring with Gemstone",
-        skuNo: "SR001",
-        category: "Rings",
-        brand: "Artisan Silver",
-        regularPrice: 2500,
-        salePrice: 2000,
-        productDescription: "Beautiful handcrafted silver ring with natural gemstone",
-        careHandling: "Clean with soft cloth, avoid chemicals",
-        silverWeight: 5.5,
-        laborPercentage: 20,
-        isDynamicPricing: true,
-        staticPrice: 0,
-        metalPurity: "925",
-        makingCharges: 100,
-        gst: 18,
-        variants: "Small:2000,Medium:2200,Large:2400",
-        isActive: true
+      productTitle: "Hydrating Facial Cleanser",
+      skuNo: "SKC001",
+      category: "Cleansers",
+      brand: "PureGlow",
+      regularPrice: 699,
+      salePrice: 599,
+      productDescription: "Gentle foaming cleanser that removes impurities while retaining moisture.",
+      careHandling: "Store in a cool, dry place. Avoid contact with eyes.",
+      gst: 18,
+      variants: "50ml:599,100ml:999",
+      isActive: true
       },
       {
-        productTitle: "Silver Necklace Chain",
-        skuNo: "SN001",
-        category: "Necklaces",
-        brand: "Artisan Silver",
-        regularPrice: 5000,
-        salePrice: 4500,
-        productDescription: "Elegant silver chain necklace",
-        careHandling: "Store in dry place, clean regularly",
-        silverWeight: 12.0,
-        laborPercentage: 25,
-        isDynamicPricing: true,
-        staticPrice: 0,
-        metalPurity: "925",
-        makingCharges: 200,
-        gst: 18,
-        variants: "16inch:4500,18inch:5000,20inch:5500",
-        isActive: true
+      productTitle: "Vitamin C Brightening Serum",
+      skuNo: "SKS001",
+      category: "Serums",
+      brand: "PureGlow",
+      regularPrice: 1299,
+      salePrice: 1099,
+      productDescription: "Concentrated vitamin C serum to brighten skin and reduce dark spots.",
+      careHandling: "Keep refrigerated after opening for best results. Use sunscreen during day.",
+      gst: 18,
+      variants: "30ml:1099,50ml:1699",
+      isActive: true
+      },
+      {
+      productTitle: "SPF 50 Daily Moisturizer",
+      skuNo: "SKM001",
+      category: "Moisturizers",
+      brand: "SkinShield",
+      regularPrice: 899,
+      salePrice: 799,
+      productDescription: "Lightweight daily moisturizer with broad-spectrum SPF 50 protection.",
+      careHandling: "Apply generously 15 minutes before sun exposure. Reapply as needed.",
+      gst: 18,
+      variants: "40ml:799,75ml:1299",
+      isActive: true
       }
     ];
 
@@ -386,7 +350,7 @@ module.exports.getUploadHistory = catchAsync(async (req, res) => {
       .limit(50)
       .populate("category", "name")
       .populate("brand", "brand_name")
-      .select("productTitle skuNo createdAt isActive silverWeight");
+      .select("productTitle skuNo createdAt isActive");
 
     successRes(res, {
       uploads: recentProducts.map(product => ({
@@ -395,7 +359,6 @@ module.exports.getUploadHistory = catchAsync(async (req, res) => {
         skuNo: product.skuNo,
         category: product.category?.name,
         brand: product.brand?.brand_name,
-        silverWeight: product.silverWeight,
         isActive: product.isActive,
         uploadedAt: product.createdAt
       })),
