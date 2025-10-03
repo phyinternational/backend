@@ -101,6 +101,7 @@ app.use(sanitizeInput);
 
 app.use(express.json({ extended: true, limit: '10mb' }));
 app.use(cookieParser({ httpOnly: true, secure: true, sameSite: "none" }));
+app.set('trust proxy', 1);
 
 app.get("/", (req, res) => {
   res.status(200).json({ message: "Raajsi backend server is running" });
