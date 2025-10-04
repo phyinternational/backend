@@ -109,12 +109,10 @@ app.get("/", (req, res) => {
 
 const corsOptions = {
   origin: [
-    "https://ecolove-website-frontend.vercel.app",
+    "https://raajsi-frontend.vercel.app",
     "http://localhost:3000",
-    "https://ecoloveclothing-admin-frontend.vercel.app",
     "http://localhost:3001",
     "http://localhost:5173",
-    "https://ecoloveclothing-admin-frontend.vercel.app",
   ],
   credentials: true,
 };
