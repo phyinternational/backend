@@ -176,7 +176,7 @@ module.exports.verifyOTP_post = catchAsync(async (req, res) => {
     const token = jwt.sign(
       { _id: user._id, role: "user" },
       JWT_SECRET_USER,
-      { expiresIn: "7d" } // Token valid for 7 days
+      { expiresIn: "30d" } // Token valid for 30 days
     );
 
     // Prepare user response
