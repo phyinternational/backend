@@ -17,24 +17,27 @@ const UserSchema = mongoose.Schema(
   {
     name: {
       type: String,
-      required: true,
+      required: false, // Optional - collected during onboarding
     },
     email: {
       type: String,
-      required: true,
+      required: false, // Optional - can be added later
       unique: true,
+      sparse: true, // Allow multiple null values for unique index
       lowercase: true,
     },
     phoneNumber: {
-      type: Number,
+      type: String, // Changed from Number to String for international format
       required: true,
+      unique: true,
+      index: true,
     },
-    // For Firebase-authenticated users, we won't store a password.
+    // For traditional email/password authentication
     password: {
       type: String,
       required: function requiredPassword() {
-        // If firebaseUid is present, password is optional.
-        return !this.firebaseUid;
+        // Password required only if using email/password auth (not OTP or Firebase)
+        return !this.firebaseUid && !this.isPhoneVerified;
       },
     },
     // Firebase UID for users authenticated via Firebase (e.g., phone OTP)
@@ -42,6 +45,16 @@ const UserSchema = mongoose.Schema(
       type: String,
       index: true,
       sparse: true,
+    },
+    // Phone verification status for OTP-based auth
+    isPhoneVerified: {
+      type: Boolean,
+      default: false,
+    },
+    // Onboarding completion status
+    isOnboarded: {
+      type: Boolean,
+      default: false,
     },
     profileImageUrl: {
       type: String,

@@ -54,6 +54,7 @@ const loyalty_routes = require("./routes/loyalty.routes");
 const bulk_upload_routes = require("./routes/bulk-upload.routes");
 const stripe_payment_routes = require("./routes/stripe-payment.routes");
 const inventory_routes = require("./routes/inventory.routes");
+const otp_routes = require("./routes/otp.routes");
 
 const passport = require("./utility/passport");
 const PORT = process.env.PORT || 5000;
@@ -142,6 +143,7 @@ app.use(loyalty_routes);
 app.use(bulk_upload_routes);
 app.use(stripe_payment_routes);
 app.use(inventory_routes);
+app.use(otp_routes);
 
 //wrong routes
 app.all("/", (req, res) => {

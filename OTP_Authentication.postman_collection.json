@@ -1,0 +1,268 @@
+{
+  "info": {
+    "name": "Raajsi - OTP Authentication",
+    "_postman_id": "otp-auth-collection-2024",
+    "description": "Phone-based OTP authentication using 2Factor.in service\n\n## Features:\n- Send OTP to phone number\n- Verify OTP and get JWT token\n- Resend OTP functionality\n- Rate limiting protection\n\n## Setup:\n1. Set {{baseUrl}} variable (default: http://localhost:5000)\n2. Add TWOFACTOR_API_KEY to backend .env\n3. Start backend server\n4. Import this collection\n5. Test the endpoints!\n\n## Flow:\n1. Send OTP → Get sessionId\n2. User receives SMS\n3. Verify OTP → Get token\n4. Store token in localStorage\n5. Use token for authenticated requests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Send OTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phoneNumber\": \"+919999999999\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/send-otp",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "send-otp"]
+        },
+        "description": "Send OTP to user's phone number. Phone number can be in formats:\n- +919999999999\n- 919999999999\n- 9999999999 (assumes India +91)\n\nResponse includes sessionId and OTP (in development mode only)"
+      },
+      "response": [
+        {
+          "name": "Success",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"+919999999999\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/send-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "send-otp"]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"message\": \"OTP sent successfully\",\n  \"sessionId\": \"ab88279e-0105-415f-912e-2f24162b8cbb\",\n  \"expiresIn\": 600,\n  \"otp\": \"123456\"\n}"
+        },
+        {
+          "name": "Rate Limit - Cooldown",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"+919999999999\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/send-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "send-otp"]
+            }
+          },
+          "status": "Too Many Requests",
+          "code": 429,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"message\": \"Please wait 45 seconds before requesting another OTP\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "Verify OTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phoneNumber\": \"+919999999999\",\n  \"otp\": \"123456\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/verify-otp",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "verify-otp"]
+        },
+        "description": "Verify OTP entered by user. On success:\n- Creates new user if phone number not registered\n- Returns existing user if already registered\n- Generates JWT token for authentication\n- Creates cart for new users"
+      },
+      "response": [
+        {
+          "name": "Success - New User",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"+919999999999\",\n  \"otp\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "verify-otp"]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"user\": {\n    \"_id\": \"60d5ec49f1b2c72b8c8e4a1b\",\n    \"name\": null,\n    \"email\": null,\n    \"phoneNumber\": \"+919999999999\",\n    \"profileImageUrl\": \"https://res.cloudinary.com/...\",\n    \"cart\": \"60d5ec49f1b2c72b8c8e4a1c\",\n    \"shippingAddress\": null,\n    \"accountType\": \"user\",\n    \"isOnboarded\": false,\n    \"isPhoneVerified\": true,\n    \"coupon_applied\": [],\n    \"isBlocked\": false,\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\"\n  },\n  \"message\": \"Login successful. Please complete your profile.\"\n}"
+        },
+        {
+          "name": "Success - Existing User",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"+919999999999\",\n  \"otp\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "verify-otp"]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"user\": {\n    \"_id\": \"60d5ec49f1b2c72b8c8e4a1b\",\n    \"name\": \"John Doe\",\n    \"email\": \"john@example.com\",\n    \"phoneNumber\": \"+919999999999\",\n    \"profileImageUrl\": \"https://res.cloudinary.com/...\",\n    \"cart\": \"60d5ec49f1b2c72b8c8e4a1c\",\n    \"shippingAddress\": {...},\n    \"accountType\": \"user\",\n    \"isOnboarded\": true,\n    \"isPhoneVerified\": true,\n    \"coupon_applied\": [],\n    \"isBlocked\": false,\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\"\n  },\n  \"message\": \"Login successful\"\n}"
+        },
+        {
+          "name": "Invalid OTP",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"+919999999999\",\n  \"otp\": \"000000\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "verify-otp"]
+            }
+          },
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"message\": \"Invalid OTP\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "Resend OTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phoneNumber\": \"+919999999999\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/resend-otp",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "resend-otp"]
+        },
+        "description": "Resend OTP to the same phone number. Subject to same rate limiting rules as Send OTP (60 second cooldown, 5 attempts per hour)"
+      },
+      "response": []
+    }
+  ],
+  
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global pre-request script for all requests in this collection",
+          "console.log('Request to:', pm.request.url.toString());"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global test script for all requests in this collection",
+          "pm.test('Response time is less than 5000ms', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(5000);",
+          "});",
+          "",
+          "pm.test('Response has correct content type', function () {",
+          "    pm.response.to.have.header('Content-Type');",
+          "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "phoneNumber",
+      "value": "+919999999999",
+      "type": "string"
+    },
+    {
+      "key": "otp",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sessionId",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
