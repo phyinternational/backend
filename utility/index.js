@@ -18,7 +18,7 @@ module.exports.errorRes = (res, code, message) => {
 
 module.exports.internalServerError = (res, err) => {
   console.log(err);
-  return this.errorRes(res, 500, "Internal server error.");
+  return this.errorRes(res, 500, `Internal Server Error: ${err.message}`);
 };
 
 module.exports.shortIdChar =

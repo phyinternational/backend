@@ -9,24 +9,27 @@ const {
 const catchAsync = require("../utility/catch-async");
 
 module.exports.addBlog_post = catchAsync(async (req, res) => {
-  const { title, content, displayImage } = req.body;
+  try{
+    const { title, content, displayImage } = req.body;
 
-  const slug = String(title).toLowerCase().split(" ").join("-");
+    const slug = String(title).toLowerCase().split(" ").join("-");
 
-  const slugExists = await Blog.findOne({ slug });
+    const slugExists = await Blog.findOne({ slug });
 
-  if (slugExists)
-    return errorRes(res, 400, "Blog with this title already exists.");
+    if (slugExists)
+      return errorRes(res, 400, "Blog with this title already exists.");
 
-  const blog = await Blog.create({
-    title,
-    slug,
-    content,
-    displayImage,
-  });
+    const blog = await Blog.create({
+      title,
+      slug,
+      content,
+      displayImage,
+    });
 
-  successRes(res, { blog, message: "Blog added successfully." });
-});
+    successRes(res, { blog, message: "Blog added successfully." });
+  } catch(err){
+    internalServerError(res, err);
+  }});
 
 module.exports.editBlog = catchAsync(async (req, res) => {
   const { _id } = req.params;
