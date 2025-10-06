@@ -91,13 +91,6 @@ module.exports.adminSignin_post = async (req, res) => {
           const { _id, name, email } = savedAdmin;
           const token = jwt.sign({ _id, role: "admin" }, JWT_SECRET_ADMIN);
 
-          res.cookie("admin_token", token, {
-            sameSite: "none",
-            httpOnly: true,
-            secure: true,
-            maxAge: 1000 * 60 * 60 * 24,
-          });
-
           return successRes(res, {
             admin: { _id, name, email, token },
             message: "Signin success.",
@@ -211,10 +204,7 @@ module.exports.userSignin_post = async (req, res) => {
             isBlocked,
           } = savedUser;
           const token = jwt.sign({ _id, role: "user" }, JWT_SECRET_USER);
-          res.cookie("user_token", token, {
-            httpOnly: true,
-            maxAge: 1000 * 60 * 60 * 24,
-          });
+          
           return successRes(res, {
             user: {
               _id,
@@ -303,10 +293,6 @@ module.exports.firebaseLogin_post = catchAsync(async (req, res) => {
   if (user.isBlocked) return errorRes(res, 403, "User blocked by admin.");
 
   const token = jwt.sign({ _id: user._id, role: "user" }, JWT_SECRET_USER);
-  res.cookie("user_token", token, {
-    httpOnly: true,
-    maxAge: 1000 * 60 * 60 * 24,
-  });
 
   const {
     _id,
@@ -441,36 +427,15 @@ exports.getUserData = (req, res) => {
   });
 };
 
-// Logout endpoints
+// Logout endpoints (client-side handles token removal from storage)
 module.exports.userLogout_get = (req, res) => {
-  try {
-    // Clear user cookie used by app auth
-    res.clearCookie("user_token");
-    // Also clear legacy Google cookie if present
-    res.clearCookie("token", { sameSite: "none", secure: true });
-    return successRes(res, { message: "User logged out successfully." });
-  } catch (e) {
-    return errorRes(res, 500, "Failed to logout user.");
-  }
+  return successRes(res, { message: "User logged out successfully." });
 };
 
 module.exports.adminLogout_get = (req, res) => {
-  try {
-    // Clear admin cookie with matching attributes
-    res.clearCookie("admin_token", { sameSite: "none", secure: true });
-    return successRes(res, { message: "Admin logged out successfully." });
-  } catch (e) {
-    return errorRes(res, 500, "Failed to logout admin.");
-  }
+  return successRes(res, { message: "Admin logged out successfully." });
 };
 
 module.exports.logoutAll_get = (req, res) => {
-  try {
-    res.clearCookie("user_token");
-    res.clearCookie("admin_token", { sameSite: "none", secure: true });
-    res.clearCookie("token", { sameSite: "none", secure: true });
-    return successRes(res, { message: "Logged out." });
-  } catch (e) {
-    return errorRes(res, 500, "Failed to logout.");
-  }
+  return successRes(res, { message: "Logged out." });
 };

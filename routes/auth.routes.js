@@ -34,10 +34,11 @@ router.get(
   async (req, res) => {
     try {
       const result = await googleUser_Controller(req.user);
-      res.cookie("token", result.token, {
+      const isProd = process.env.NODE_ENV === "production";
+      res.cookie("user_token", result.token, {
         httpOnly: true,
-        secure: true,
-        sameSite: "none",
+        secure: !!isProd,
+        sameSite: isProd ? "none" : "lax",
       });
       res.redirect(process.env.CLIENT_URL);
     } catch (error) {

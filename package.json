@@ -15,7 +15,6 @@
     "bcrypt": "^5.1.0",
     "cloudinary": "^1.41.3",
     "color-name-list": "^10.19.0",
-    "cookie-parser": "^1.4.6",
     "cookie-session": "^2.1.0",
     "cors": "^2.8.5",
     "csv-parser": "^3.0.0",

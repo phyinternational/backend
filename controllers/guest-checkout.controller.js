@@ -228,9 +228,12 @@ module.exports.convertGuestToUser = catchAsync(async (req, res) => {
       process.env.JWT_SECRET_USER
     );
 
-    // Set cookie
+    // Set cookie with environment-aware options
+    const isProd = process.env.NODE_ENV === "production";
     res.cookie("user_token", token_jwt, {
       httpOnly: true,
+      secure: !!isProd,
+      sameSite: isProd ? "none" : "lax",
       maxAge: 1000 * 60 * 60 * 24, // 24 hours
     });
 

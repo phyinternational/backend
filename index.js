@@ -1,6 +1,5 @@
 require("dotenv").config();
 const express = require("express");
-const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const helmet = require("helmet");
@@ -100,7 +99,7 @@ app.use(speedLimiter);
 app.use(sanitizeInput);
 
 app.use(express.json({ extended: true, limit: '10mb' }));
-app.use(cookieParser({ httpOnly: true, secure: true, sameSite: "none" }));
+
 app.set('trust proxy', 1);
 
 app.get("/", (req, res) => {
