@@ -7,6 +7,6 @@ router.post("/admin/blog/add", requireAdminLogin, blogController.addBlog_post);
 router.get("/blog/all", blogController.getAllBlogs_get);
 router.delete("/admin/blog/:_id/delete", blogController.deleteBlog);
 router.post("/admin/blog/:_id/edit", blogController.editBlog);
-router.get("/blog/:id", blogController.getBlogById);
+router.get("/blog/:slug", blogController.getBlogBySlug);
 
 module.exports = router;
