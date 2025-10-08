@@ -332,14 +332,18 @@ module.exports.userOrderUpadte_put = catchAsync(async (req, res) => {
 // rzp
 module.exports.createRzpOrder_post = async (req, res) => {
   const { amount, currency, receipt, notes } = req.body;
+  const amountInPaise = Math.round(amount * 100);
 
-  razorpayInstance.orders.create(
-    { amount, currency, receipt, notes },
-    (err, order) => {
-      if (!err) successRes(res, { order });
-      else internalServerError(res, err);
-    }
-  );
+  const options = {
+    amount: amountInPaise, // required as integer paise
+    currency: currency || "INR",
+    receipt: receipt || `rcpt_${Date.now()}`,
+    notes: notes || {},
+  };
+  razorpayInstance.orders.create(options, (err, order) => {
+    if (!err) successRes(res, { order });
+    else internalServerError(res, err);
+  });
 };
 
 module.exports.rzpPaymentVerification = async (req, res) => {
@@ -360,7 +364,7 @@ module.exports.rzpPaymentVerification = async (req, res) => {
       payment_mode,
     } = req.body;
 
-    const shasum = crypto.createHmac("sha256", process.env.RAZORPAY_KEY_SECRET);
+    const shasum = crypto.createHmac("sha256", process.env.RAZORPAY_TEST_KEY_SECRET);
     shasum.update(`${orderCreationId}|${razorpayPaymentId}`);
     const digest = shasum.digest("hex");
 

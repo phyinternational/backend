@@ -16,7 +16,7 @@ router.post(
 
 
 // rzp
-router.post(" ", requireUserLogin, orderController.createRzpOrder_post);
+router.post("/rzp/create-order", requireUserLogin, orderController.createRzpOrder_post);
 router.post(
   "/rzp/payment-verification",
   requireUserLogin,

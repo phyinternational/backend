@@ -23,8 +23,9 @@ const tryVerify = (token, secret) => {
 
 module.exports.requireAdminLogin = (req, res, next) => {
   const token = extractBearer(req.headers.authorization);
-  
+  console.log("Token:", token); // Debugging line
   const payload = tryVerify(token, JWT_SECRET_ADMIN);
+  console.log(payload)
   if (!payload) return errorRes(res, 401, "Unauthorized access.");
 
   const { _id } = payload;
