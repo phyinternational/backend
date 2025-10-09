@@ -26,7 +26,7 @@ const OrderSchema = mongoose.Schema(
         variant: {
           type: ObjectId,
           ref: "ProductVarient",
-          default: "",
+          default: null,
         },
       },
     ],

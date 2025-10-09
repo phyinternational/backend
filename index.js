@@ -145,7 +145,6 @@ app.use(bulk_upload_routes);
 app.use(stripe_payment_routes);
 app.use(inventory_routes);
 app.use(otp_routes);
-
 //wrong routes
 app.all("/", (req, res) => {
   res.status(400).end();

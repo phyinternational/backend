@@ -8,7 +8,9 @@ const ObjectIdSchema = z
 const ProductItemSchema = z.object({
   product: ObjectIdSchema,
   quantity: z.number(),
-  variant: ObjectIdSchema.optional().default(""),
+  // variant may be absent (undefined) or null when there is no variant selected.
+  // When present it must be a valid ObjectId string.
+  variant: ObjectIdSchema.optional().nullable(),
 });
 
 // Shipping address for an order

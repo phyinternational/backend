@@ -20,7 +20,6 @@ router.post("/rzp/create-order", requireUserLogin, orderController.createRzpOrde
 router.post(
   "/rzp/payment-verification",
   requireUserLogin,
-  validate(placeOrderValidation),
   orderController.rzpPaymentVerification
 );
 

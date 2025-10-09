@@ -267,12 +267,20 @@ module.exports.blockUser_post = (req, res) => {
 };
 
 module.exports.updateUserAddress_post = (req, res) => {
-  const { shippingAddress } = req.body;
+  // Accept the address payload in multiple possible shapes sent from frontend:
+  // { addressData: { ... } } or { shippingAddress: { ... } } or the raw address object in body
+  const body = req.body || {};
+  const address = body.addressData || body.shippingAddress || body;
   const { _id } = req.user;
-  if (shippingAddress) {
+
+  console.log('updateUserAddress_post:', _id, address);
+
+  // Ensure address is not empty and has at least one key
+  if (address && Object.keys(address).length > 0) {
+    // Persist into shippingAddress field on User (this is what frontend reads)
     User.findByIdAndUpdate(
       _id,
-      { shippingAddress },
+      { shippingAddress: address },
       { new: true, runValidators: true }
     )
       .select("-password -__v -accountType -isBlocked")

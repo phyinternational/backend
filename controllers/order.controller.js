@@ -30,33 +30,48 @@ module.exports.placeOrder_post = catchAsync(async (req, res) => {
   const response = await Promise.all(
     products.map(async (item) => {
       const productQuery = Product.findById(item.product);
-      const variantQuery = ProductVariant.findById(item.variant);
+      // const variantQuery = ProductVariant.findById(item.variant);
 
-      const [product, variant] = await Promise.all([
+      const [product] = await Promise.all([
         productQuery,
-        variantQuery,
+        // variantQuery,
       ]);
 
-      if (!product || !variant)
+      if (!product)
         return errorRes(res, 400, "Invalid product or variant.");
 
-      if (variant.stock < item.quantity)
-        return errorRes(res, 400, "Out of stock.");
+      // if (variant.stock < item.quantity)
+      //   return errorRes(res, 400, "Out of stock.");
 
-      return {
-        product: product._id,
-        variant: variant._id,
+      // Build product entry; include variant only when provided and not an empty string
+      const prodEntry = {
+        product: product?._id,
         quantity: item.quantity,
-        price: variant.price,
+        price: product?.salePrice,
       };
+
+      if (item.variant && String(item.variant).trim() !== "") {
+        prodEntry.variant = item.variant;
+      }
+
+      return prodEntry;
     })
   );
 
-  const order = await User_Order.create({
+  // Ensure required fields exist and have sensible defaults
+  const payment_mode = req.body.payment_mode || 'ONLINE';
+  // If ONLINE, mark payment_status as PENDING until verification; COD => PENDING as well
+  const payment_status = req.body.payment_status || 'PENDING';
+
+  const orderPayload = {
     ...req.body,
     products: response,
     buyer: userId,
-  });
+    payment_mode,
+    payment_status,
+  };
+
+  const order = await User_Order.create(orderPayload);
 
   // Send order confirmation email (fire-and-forget)
   try {

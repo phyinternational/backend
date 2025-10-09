@@ -59,7 +59,6 @@ module.exports.addtoWishlist = catchAsync(async (req, res) => {
   });
 });
 
-
 module.exports.removeFromWishlist = catchAsync(async (req, res) => {
   const { productId } = req.params;
   const { varientId } = req.query; // Allow variant to be passed as query param

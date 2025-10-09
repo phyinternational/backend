@@ -5,7 +5,6 @@ const ItemSchema = mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     required: [true, "product Id is required"],
     ref: "Product",
-    unique: true,
   },
   quantity: {
     type: Number,
@@ -21,7 +20,7 @@ const ItemSchema = mongoose.Schema({
 const cartSchema = mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Company",
+    ref: "User",
     required: [true, "userId is required"],
   },
   products: [ItemSchema],
