@@ -21,6 +21,11 @@ require("dotenv").config();
 
 module.exports.placeOrder_post = catchAsync(async (req, res) => {
   const { products } = req.body;
+  // Ensure request is authenticated
+  if (!req.user || !req.user._id) {
+    console.error('placeOrder_post: unauthenticated request attempted to place order', { bodySnippet: { productsLength: Array.isArray(products) ? products.length : 0 } });
+    return errorRes(res, 401, 'Authentication required to place order');
+  }
   const { _id: userId } = req.user;
 
   //validate products and variants
@@ -63,12 +68,33 @@ module.exports.placeOrder_post = catchAsync(async (req, res) => {
   // If ONLINE, mark payment_status as PENDING until verification; COD => PENDING as well
   const payment_status = req.body.payment_status || 'PENDING';
 
+  // Build shipping address snapshot: prefer request payload, fallback to user's saved address
+  const user = await User.findById(userId).select('shippingAddress email');
+  const incomingAddr = req.body.shippingAddress || {};
+  const shippingAddress = {
+    firstName: incomingAddr.firstName || user?.shippingAddress?.firstName || "",
+    lastName: incomingAddr.lastName || user?.shippingAddress?.lastName || "",
+    email: incomingAddr.email || user?.email || "",
+    phoneNumber: incomingAddr.phoneNumber || user?.shippingAddress?.phoneNumber || "",
+    street: incomingAddr.street || user?.shippingAddress?.street || "",
+    city: incomingAddr.city || user?.shippingAddress?.city || "",
+    state: incomingAddr.state || user?.shippingAddress?.state || "",
+    zip: incomingAddr.zip || user?.shippingAddress?.zip || "",
+    country: incomingAddr.country || user?.shippingAddress?.country || "India",
+  };
+
+  // Validate required shipping fields (schema requires them)
+  if (!shippingAddress.phoneNumber || !shippingAddress.street || !shippingAddress.city || !shippingAddress.state || !shippingAddress.zip) {
+    return errorRes(res, 400, 'Incomplete shipping address. phoneNumber, street, city, state and zip are required.');
+  }
+
   const orderPayload = {
     ...req.body,
     products: response,
     buyer: userId,
     payment_mode,
     payment_status,
+    shippingAddress,
   };
 
   const order = await User_Order.create(orderPayload);
@@ -110,7 +136,23 @@ module.exports.getAllOrders_get = catchAsync(async (req, res) => {
     User_Order
   );
 
-  successRes(res, orders);
+  // Normalize paginated shape for frontend
+  const page = orders.page || 1;
+  const limit = orders.limit || (req.query.limit ? parseInt(req.query.limit, 10) : 10);
+  const totalDocs = typeof orders.total === 'number' ? orders.total : (Array.isArray(orders) ? orders.length : 0);
+  const totalPages = orders.totalPage || Math.max(1, Math.ceil(totalDocs / limit));
+
+  const payload = {
+    docs: orders, // keep full result for backward compatibility (includes items in result variable)
+    page,
+    limit,
+    totalDocs,
+    totalPages,
+    hasPrevPage: page > 1,
+    hasNextPage: page < totalPages,
+  };
+
+  successRes(res, payload);
 });
 
 module.exports.userOrderDetails_get = catchAsync(async (req, res) => {
@@ -253,7 +295,14 @@ module.exports.updateOrder_post = catchAsync( async (req, res) => {
     return errorRes(res, 400, "Invalid Order ID format.");
   }
   if (payment_status) updates.payment_status = payment_status;
-  if (order_status) updates.order_status = order_status;
+  if (order_status) {
+    // Normalize incoming order_status to match schema enum values (e.g. "CANCELLED BY ADMIN" -> "CANCELLED_BY_ADMIN")
+    if (typeof order_status === 'string') {
+      updates.order_status = order_status.trim().replace(/\s+/g, '_').toUpperCase();
+    } else {
+      updates.order_status = order_status;
+    }
+  }
 
   if (Object.keys(updates).length == 0)
     return errorRes(res, 400, "No updates made.");
@@ -362,7 +411,8 @@ module.exports.createRzpOrder_post = async (req, res) => {
 };
 
 module.exports.rzpPaymentVerification = async (req, res) => {
-  const { _id: userId } = req.user;
+  // For guest orders, req.user might not exist
+  const { _id: userId } = req.user || {};
 
   try {
     const {
@@ -377,13 +427,127 @@ module.exports.rzpPaymentVerification = async (req, res) => {
       coupon_applied,
       shippingAddress,
       payment_mode,
+      isGuestOrder = false,
     } = req.body;
 
     const shasum = crypto.createHmac("sha256", process.env.RAZORPAY_TEST_KEY_SECRET);
     shasum.update(`${orderCreationId}|${razorpayPaymentId}`);
     const digest = shasum.digest("hex");
 
-    // comaparing our digest with the actual signature
+    // Verify signature
+    if (digest !== razorpaySignature) {
+      return errorRes(res, 400, "Transaction not legit!.");
+    }
+
+    if (isGuestOrder) {
+      // Handle guest order payment verification
+      const { guestInfo, billingAddress } = req.body;
+
+      // Create guest order after successful payment
+      const GuestOrder = require('../models/guest-order.model');
+      const Product = require('../models/product.model');
+
+      // Validate and calculate product prices
+      let orderSubtotal = 0;
+      let totalGST = 0;
+      const processedProducts = [];
+
+      for (const item of products) {
+        const product = await Product.findById(item.productId);
+        if (!product) {
+          return errorRes(res, 400, `Product not found: ${item.productId}`);
+        }
+
+        let itemPrice = product.staticPrice || product.salePrice || product.price || 0;
+        const gstAmount = (product.gst / 100) * itemPrice;
+        const priceBreakdown = {
+          basePrice: itemPrice,
+          gstAmount: gstAmount,
+          finalPrice: itemPrice + gstAmount,
+        };
+
+        const totalItemPrice = itemPrice * item.quantity;
+        const itemGST = priceBreakdown.gstAmount * item.quantity;
+
+        processedProducts.push({
+          product: product._id,
+          quantity: item.quantity,
+          price: itemPrice,
+          variant: item.variantId || null,
+          priceBreakdown: priceBreakdown
+        });
+
+        orderSubtotal += totalItemPrice;
+        totalGST += itemGST;
+      }
+
+      const finalAmount = orderSubtotal - 0; // No coupon for now
+
+      // Create guest order
+      const guestOrder = new GuestOrder({
+        guestInfo,
+        products: processedProducts,
+        shippingAddress,
+        billingAddress,
+        orderTotal: {
+          subtotal: orderSubtotal,
+          gstAmount: totalGST,
+          discount: 0,
+          finalAmount: finalAmount
+        },
+        paymentInfo: {
+          method: "ONLINE",
+          status: "COMPLETE",
+          razorpayOrderId,
+          razorpayPaymentId
+        },
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent')
+      });
+
+      const savedOrder = await guestOrder.save();
+
+      // Generate conversion token for post-purchase account creation
+      const crypto = require('crypto');
+      const conversionToken = crypto.randomBytes(32).toString('hex');
+      savedOrder.conversionToken = conversionToken;
+      savedOrder.conversionToken.expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await savedOrder.save();
+
+      // Send order confirmation email
+      try {
+        const emailService = require('../services/email.service');
+        emailService.sendGuestOrderConfirmation(savedOrder).catch(err => console.error(err));
+      } catch (err) {
+        console.error('Error sending guest order confirmation email:', err);
+      }
+
+      return successRes(res, {
+        order: savedOrder,
+        orderId: razorpayOrderId,
+        paymentId: razorpayPaymentId,
+        message: "Guest order placed successfully.",
+      });
+    }
+
+    // Regular user order payment verification
+    // Ensure we have an authenticated user for non-guest orders
+    if (!isGuestOrder && !userId) {
+      console.error('rzpPaymentVerification: missing authenticated user for non-guest order', {
+        reqUser: req.user,
+        bodySnippet: {
+          orderCreationId,
+          razorpayPaymentId,
+          razorpayOrderId,
+          productsLength: Array.isArray(products) ? products.length : 0,
+          order_price,
+        },
+      });
+      return errorRes(res, 401, 'Authentication required to verify payment for user orders');
+    }
+
+    // Debug: log order payload about to be created for auditing
+    console.log('Creating User_Order with buyer:', userId, 'products count:', Array.isArray(products) ? products.length : 0);
 
     const order = new User_Order({
       buyer: userId,
@@ -397,17 +561,12 @@ module.exports.rzpPaymentVerification = async (req, res) => {
       rzp_paymentId: razorpayPaymentId,
     });
 
-    if (digest !== razorpaySignature) {
-      order.payment_status = "FAILED";
-      await order.save();
-
-      return errorRes(res, 400, "Transaction not legit!.");
-    }
-
     // empty cart
     const cart = await User_Cart.findOne({ user: userId });
-    cart.products = [];
-    const updatedCart = await cart.save();
+    if (cart) {
+      cart.products = [];
+      const updatedCart = await cart.save();
+    }
 
     // update products' availability
     await Promise.all(
@@ -452,7 +611,7 @@ module.exports.rzpPaymentVerification = async (req, res) => {
               order: result,
               orderId: razorpayOrderId,
               paymentId: razorpayPaymentId,
-              updatedCart,
+              updatedCart: cart ? { products: [] } : null,
               message: "Order placed successfully.",
             });
           });
@@ -465,6 +624,11 @@ module.exports.rzpPaymentVerification = async (req, res) => {
 
 // ccavenue controllers
 module.exports.ccavenue_creatOrder_post = async (req, res) => {
+  // Ensure authenticated
+  if (!req.user || !req.user._id) {
+    console.error('ccavenue_creatOrder_post: unauthenticated request');
+    return errorRes(res, 401, 'Authentication required');
+  }
   const { _id: userId } = req.user;
   const { products, order_price, coupon_applied, shippingAddress } = req.body;
   // make cart empty

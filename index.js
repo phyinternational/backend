@@ -150,8 +150,14 @@ app.all("/", (req, res) => {
   res.status(400).end();
 });
 
-const errorHandler = (err, req, res, _next) => {
-  if (err.name === "UnauthorizedError") {
+const errorHandler = (err, req, res, next) => {
+  // If headers have already been sent, delegate to the default Express error handler
+  if (res.headersSent) {
+    console.warn('Error handler invoked but headers already sent. Delegating to next error handler.');
+    return next(err);
+  }
+
+  if (err && err.name === "UnauthorizedError") {
     return res.status(401).json({ error: "Unauthorized!" });
   }
   console.error(err, "Error");

@@ -95,9 +95,7 @@ This document provides instructions for integrating the admin frontend with the 
       "category": "categoryId",
       "price": 2999,
       "salePrice": 2499,
-      "silverWeight": 10.5,
-      "isDynamicPricing": true,
-      "laborPercentage": 20,
+  // (removed silver/dynamic-pricing example fields)
       "gst": 3,
       "displayImage": [
         {

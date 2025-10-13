@@ -6,6 +6,9 @@ const crypto = require("crypto");
 
 // Place guest order
 module.exports.placeGuestOrder = catchAsync(async (req, res) => {
+  // Debug: Log incoming payload
+  console.log('--- Incoming Guest Order Payload ---');
+  console.log(JSON.stringify(req.body, null, 2));
   try {
     const {
       guestInfo,
@@ -34,6 +37,8 @@ module.exports.placeGuestOrder = catchAsync(async (req, res) => {
     let totalGST = 0;
     const processedProducts = [];
 
+  // Debug: Log processed products array as it's built
+
     for (const item of products) {
       const product = await Product.findById(item.productId);
       if (!product) {
@@ -43,25 +48,14 @@ module.exports.placeGuestOrder = catchAsync(async (req, res) => {
       let itemPrice;
       let priceBreakdown = {};
 
-      if (product.isDynamicPricing && product.silverWeight > 0) {
-        // Calculate dynamic price
-        const priceCalc = await silverPriceService.calculateDynamicPrice(
-          product.silverWeight,
-          product.laborPercentage,
-          product.gst
-        );
-        itemPrice = priceCalc.finalPrice;
-        priceBreakdown = priceCalc.breakdown;
-      } else {
-        // Use static price
-        itemPrice = product.staticPrice || product.salePrice;
-        const gstAmount = (product.gst / 100) * itemPrice;
-        priceBreakdown = {
-          basePrice: itemPrice,
-          gstAmount: gstAmount,
-          finalPrice: itemPrice + gstAmount
-        };
-      }
+      // Use static price for all products (dynamic pricing removed)
+      itemPrice = product.staticPrice || product.salePrice || product.price || 0;
+      const gstAmount = (product.gst / 100) * itemPrice;
+      priceBreakdown = {
+        basePrice: itemPrice,
+        gstAmount: gstAmount,
+        finalPrice: itemPrice + gstAmount,
+      };
 
       const totalItemPrice = itemPrice * item.quantity;
       const itemGST = (priceBreakdown.gstAmount || 0) * item.quantity;
@@ -72,6 +66,14 @@ module.exports.placeGuestOrder = catchAsync(async (req, res) => {
         price: itemPrice,
         variant: item.variantId || null,
         priceBreakdown: priceBreakdown
+      });
+
+      // Debug: Log each processed product
+      console.log('Processed product:', {
+        product: product._id,
+        quantity: item.quantity,
+        price: itemPrice,
+        variant: item.variantId || null
       });
 
       orderSubtotal += totalItemPrice;
@@ -97,7 +99,8 @@ module.exports.placeGuestOrder = catchAsync(async (req, res) => {
     const finalAmount = orderSubtotal - discount;
 
     // Create guest order
-    const guestOrder = new GuestOrder({
+    // Debug: Log final guest order object before saving
+    const guestOrderObj = {
       guestInfo,
       products: processedProducts,
       shippingAddress,
@@ -115,7 +118,11 @@ module.exports.placeGuestOrder = catchAsync(async (req, res) => {
       couponApplied,
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
-    });
+    };
+    console.log('--- GuestOrder object to be saved ---');
+    console.log(JSON.stringify(guestOrderObj, null, 2));
+    const guestOrder = new GuestOrder(guestOrderObj);
+
 
     const savedOrder = await guestOrder.save();
 
@@ -125,12 +132,34 @@ module.exports.placeGuestOrder = catchAsync(async (req, res) => {
     savedOrder.conversionToken.expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
     await savedOrder.save();
 
-  // Send order confirmation email with account creation link (non-blocking)
-  const emailService = require('../services/email.service');
-  emailService.sendGuestOrderConfirmation(savedOrder).catch(err => console.error(err));
+    // Create Razorpay order (same as for logged-in user)
+    const { razorpayInstance } = require('../utility');
+    const amountInPaise = Math.round(finalAmount * 100);
+    const rzpOptions = {
+      amount: amountInPaise,
+      currency: 'INR',
+      receipt: `guest_rcpt_${savedOrder._id}`,
+      notes: { guestOrderId: savedOrder._id.toString() }
+    };
+    let rzpOrder;
+    try {
+      rzpOrder = await new Promise((resolve, reject) => {
+        razorpayInstance.orders.create(rzpOptions, (err, order) => {
+          if (err) reject(err);
+          else resolve(order);
+        });
+      });
+    } catch (err) {
+      return internalServerError(res, 'Failed to create Razorpay order');
+    }
+
+    // Send order confirmation email with account creation link (non-blocking)
+    const emailService = require('../services/email.service');
+    emailService.sendGuestOrderConfirmation(savedOrder).catch(err => console.error(err));
 
     successRes(res, {
       order: savedOrder,
+      rzpOrder,
       conversionToken,
       message: "Guest order placed successfully"
     });

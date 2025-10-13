@@ -55,14 +55,24 @@ module.exports.requireUserLogin = (req, res, next) => {
   const token = extractBearer(req.headers.authorization);
 
   const payload = tryVerify(token, JWT_SECRET_USER);
-  if (!payload) return errorRes(res, 401, "Unauthorized access.");
+  if (!payload) {
+    console.error('requireUserLogin: token verification failed', { tokenPresent: !!token, authorizationHeader: req.headers.authorization ? '[REDACTED]' : null });
+    return errorRes(res, 401, "Unauthorized access.");
+  }
 
   const { _id } = payload;
   User.findById(_id)
     .select("-password -__v")
     .then((userData) => {
+      if (!userData) {
+        console.error('requireUserLogin: user not found for id', _id);
+        return errorRes(res, 401, 'Unauthorized access.');
+      }
       req.user = userData;
       next();
     })
-    .catch((err) => errorRes(res, 500, "Authorization error."));
+    .catch((err) => {
+      console.error('requireUserLogin: DB error while finding user', err);
+      errorRes(res, 500, "Authorization error.");
+    });
 };

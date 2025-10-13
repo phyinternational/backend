@@ -43,15 +43,36 @@ module.exports.addProduct = catchAsync(async (req, res) => {
         products: [{ productId, varientId, quantity }],
       });
       await newCart.save();
-      return successRes(res, { cart: newCart });
+
+      // Populate product details for consistent response
+      const populatedCart = await User_Cart.findById(newCart._id)
+        .populate("products.productId products.varientId");
+
+      return successRes(res, { cart: populatedCart });
     }
+
+    // Check if product already exists in cart
     const productIndex = cart.products.findIndex(
-      (p) => p.productId == productId && p.varientId == varientId
+      (p) => p.productId.toString() === productId &&
+             ((p.varientId && varientId && p.varientId.toString() === varientId.toString()) ||
+              (!p.varientId && !varientId))
     );
-    if (productIndex !== -1) return errorRes(res, 400, "Product already exists in cart.");
-    else cart.products.push({ productId, varientId, quantity });
+
+    if (productIndex !== -1) {
+      // If product exists, update quantity instead of error
+      cart.products[productIndex].quantity += quantity;
+    } else {
+      // Add new product
+      cart.products.push({ productId, varientId, quantity });
+    }
+
     await cart.save();
-    successRes(res, { cart });
+
+    // Populate product details for consistent response
+    const populatedCart = await User_Cart.findById(cart._id)
+      .populate("products.productId products.varientId");
+
+    successRes(res, { cart: populatedCart });
   } catch (err) {
     console.error('addProduct error:', err);
     return internalServerError(res, err);

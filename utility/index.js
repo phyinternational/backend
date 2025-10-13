@@ -1,5 +1,9 @@
 const Razorpay = require("razorpay");
 module.exports.successRes = (res, data) => {
+  if (res.headersSent) {
+    console.warn('successRes called but headers already sent');
+    return;
+  }
   return res.json({
     status: "success",
     data,
@@ -7,6 +11,10 @@ module.exports.successRes = (res, data) => {
 }; 
 
 module.exports.errorRes = (res, code, message) => {
+  if (res.headersSent) {
+    console.warn('errorRes called but headers already sent:', code, message);
+    return;
+  }
   return res.status(code).json({
     status: "error",
     error: {
@@ -17,8 +25,12 @@ module.exports.errorRes = (res, code, message) => {
 };
 
 module.exports.internalServerError = (res, err) => {
-  console.log(err);
-  return this.errorRes(res, 500, `Internal Server Error: ${err.message}`);
+  console.error(err);
+  if (res.headersSent) {
+    console.warn('internalServerError called but headers already sent:', err && err.message ? err.message : err);
+    return;
+  }
+  return module.exports.errorRes(res, 500, `Internal Server Error: ${err && err.message ? err.message : err}`);
 };
 
 module.exports.shortIdChar =

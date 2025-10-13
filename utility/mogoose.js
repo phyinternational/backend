@@ -15,6 +15,8 @@ const buildPaginatedSortedFilteredQuery = async (query, req, model) => {
   result.page = page;
   result.limit = limit;
   result.total = total.length;
+  // totalPage is number of pages available based on limit
+  result.totalPage = Math.max(1, Math.ceil(total.length / limit));
 
   return result;
 };

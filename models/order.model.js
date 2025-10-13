@@ -36,12 +36,15 @@ const OrderSchema = mongoose.Schema(
       default: null,
     },
     shippingAddress: {
-      address: {
-        type: String,
-      },
-      pincode: {
-        type: Number,
-      },
+      firstName: { type: String, default: "" },
+      lastName: { type: String, default: "" },
+      email: { type: String, default: "" },
+      phoneNumber: { type: String, required: true },
+      street: { type: String, required: true },
+      city: { type: String, required: true },
+      state: { type: String, required: true },
+      zip: { type: String, required: true },
+      country: { type: String, default: "India" }
     },
     payment_mode: {
       type: String,

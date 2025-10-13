@@ -18,7 +18,7 @@ const categorySchema = new mongoose.Schema(
   {
     timestamps: true, // Add this option for createdAt and updatedAt fields
   }
-);
+);  
 
 mongoose.model("ProductCategory", categorySchema);
 const ProductCategory = mongoose.model("ProductCategory");

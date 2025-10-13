@@ -23,16 +23,30 @@ module.exports.addProduct_post = catchAsync(async (req, res) => {
   // Parse product data from form-data
   let productData;
   if (req.body.product) {
-    try {
-      productData = JSON.parse(req.body.product);
-    } catch (err) {
-      return errorRes(res, 400, "Invalid product data JSON.");
+    // If product is a string (multipart/form-data case), parse it.
+    // If it's already an object (application/json with product field), use it directly.
+    if (typeof req.body.product === "string") {
+      try {
+        productData = JSON.parse(req.body.product);
+      } catch (err) {
+        return errorRes(res, 400, "Invalid product data JSON.");
+      }
+    } else {
+      productData = req.body.product;
     }
   } else {
     productData = req.body;
   }
 
   if (!productData) return errorRes(res, 400, "Product details are required.");
+
+  // Coerce boolean-like string values to real booleans for known boolean fields
+  if (typeof productData.isFeatured === "string") {
+    productData.isFeatured = productData.isFeatured === "true";
+  }
+  if (typeof productData.isActive === "string") {
+    productData.isActive = productData.isActive === "true";
+  }
 
   if (productData.productSlug) {
     const findSlug = await Product.findOne({
@@ -60,7 +74,11 @@ module.exports.addProduct_post = catchAsync(async (req, res) => {
       cloudinaryPublicIds.push(data.public_id);
     }
   }
-  productData.productImageUrl = imageUrls;
+  // Only overwrite productImageUrl when files were uploaded. This preserves
+  // provided URLs when the client sends image URLs in JSON without files.
+  if (files.length > 0) {
+    productData.productImageUrl = imageUrls;
+  }
 
   const product = new Product(productData);
 
@@ -278,30 +296,46 @@ module.exports.getParticularProduct_get = catchAsync(async (req, res) => {
   successRes(res, { product: product[0], variants, images });
 });
 
-module.exports.deleteProduct_delete = async (req, res) => {
+module.exports.deleteProduct_delete = catchAsync(async (req, res) => {
   const { productId } = req.params;
+
   try {
-    const findProduct = await Product.findById({ _id: productId });
-    if (findProduct) {
-      findProduct.displayImage.map(async (e) => {
-        await deleteFromCloudinary(e.url);
-      });
-    } else {
-      errorRes(res, 404, "Product not found");
+    // Find product first
+    const findProduct = await Product.findById(productId);
+
+    if (!findProduct) {
+      return errorRes(res, 404, "Product not found.");
     }
-  } catch (error) {
-    internalServerError(res, "error in finding the product");
+
+    // If displayImage is present, attempt to delete files from Cloudinary.
+    // Use for..of so we can await each deletion and catch individual errors.
+    if (Array.isArray(findProduct.displayImage) && findProduct.displayImage.length > 0) {
+      for (const img of findProduct.displayImage) {
+        try {
+          // img might be an object with url or a string. Handle both.
+          const url = img && (img.url || img);
+          if (url) await deleteFromCloudinary(url);
+        } catch (err) {
+          // Log and continue; deletion failure shouldn't block DB delete.
+          console.error('Failed to delete image from Cloudinary for product', productId, err);
+        }
+      }
+    }
+
+    // Delete product from DB
+    const deletedProduct = await Product.findByIdAndDelete(productId);
+    if (!deletedProduct) {
+      return errorRes(res, 404, "Product not found.");
+    }
+
+    return successRes(res, {
+      deletedProduct,
+      message: "Product deleted successfully.",
+    });
+  } catch (err) {
+    return internalServerError(res, err);
   }
-  Product.findByIdAndDelete(productId)
-    .then((deletedProduct) => {
-      if (!deletedProduct) return errorRes(res, 404, "Product not found.");
-      return successRes(res, {
-        deletedProduct,
-        message: "Product deleted successfully.",
-      });
-    })
-    .catch((err) => internalServerError(res, err));
-};
+});
 
 module.exports.filterProducts_post = async (req, res) => {
   const {
@@ -462,13 +496,17 @@ module.exports.updateFeatured = async (req, res) => {
     const { productId } = req.params;
     const { isFeatured } = req.body;
 
-    if (!productId || !isFeatured) {
+    // Allow false as a valid value; check for undefined instead
+    if (!productId || typeof isFeatured === "undefined") {
       return errorRes(res, 400, "All details mandatory.");
     }
 
+    // Coerce string values to boolean
+    const featuredFlag = typeof isFeatured === "string" ? isFeatured === "true" : Boolean(isFeatured);
+
     const find = await Product.findByIdAndUpdate(
       productId,
-      { isFeatured },
+      { isFeatured: featuredFlag },
       { new: true }
     );
 

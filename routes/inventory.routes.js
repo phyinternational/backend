@@ -16,10 +16,13 @@ router.get("/admin/inventory/all",
   inventoryController.getAllInventory
 );
 
-router.get("/admin/inventory/low-stock", 
+router.get("/admin/inventory/:inventoryId/movements", 
   requireAdminLogin, 
-  inventoryController.getLowStockItems
+  validateObjectId('inventoryId'),
+  validatePagination,
+  inventoryController.getInventoryMovements
 );
+
 
 router.put("/admin/inventory/:inventoryId/stock", 
   requireAdminLogin, 
@@ -27,17 +30,17 @@ router.put("/admin/inventory/:inventoryId/stock",
   inventoryController.updateStock
 );
 
+router.get("/admin/inventory/low-stock", 
+  requireAdminLogin, 
+  inventoryController.getLowStockItems
+);
+
+
 router.put("/admin/inventory/bulk-reorder-points", 
   requireAdminLogin, 
   inventoryController.bulkUpdateReorderPoints
 );
 
-router.get("/admin/inventory/:inventoryId/movements", 
-  requireAdminLogin, 
-  validateObjectId('inventoryId'),
-  validatePagination,
-  inventoryController.getInventoryMovements
-);
 
 router.post("/admin/inventory", 
   requireAdminLogin, 

@@ -344,15 +344,13 @@ module.exports.dashboardData = catchAsync(async (req, res) => {
   const CompleteOrders = await User_Order.countDocuments({
     order_status: "DELIVERED",
   });
+  // Count orders that are neither delivered nor cancelled by admin (use enum value)
   const PendingOrders = await User_Order.countDocuments({
-    $or: [
-      { order_status: { $ne: "DELIVERED" } },
-      { order_status: { $ne: "CANCELLED BY ADMIN" } },
-    ],
+    order_status: { $nin: ["DELIVERED", "CANCELLED_BY_ADMIN"] },
   });
 
   const CanceledOrders = await User_Order.countDocuments({
-    order_status: "CANCELLED BY ADMIN",
+    order_status: "CANCELLED_BY_ADMIN",
   });
 
   const TotalProducts = await Product.countDocuments();

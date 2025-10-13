@@ -262,22 +262,67 @@ module.exports.applyCoupon_post = catchAsync(async (req, res) => {
   // Calculate discount
   const discountAmount = coupon.calculateDiscount(cartAmount);
   const finalAmount = cartAmount - discountAmount;
-  
+  // Perform an atomic increment to avoid race conditions where multiple
+  // requests could over-consume the coupon quota. We increment usedQuantity
+  // only if usedQuantity < couponQuantity.
+  let updatedCoupon;
+  try {
+    updatedCoupon = await Coupon.findOneAndUpdate(
+      { _id: coupon._id, usedQuantity: { $lt: coupon.couponQuantity } },
+      { $inc: { usedQuantity: 1 } },
+      { new: true }
+    );
+
+    if (!updatedCoupon) {
+      // Another request may have consumed the last available slot.
+      return errorRes(res, 400, 'Coupon usage limit reached.');
+    }
+  } catch (err) {
+    console.error('Failed to atomically increment coupon usage:', err);
+    return internalServerError(res, err);
+  }
+
+  // Record user's coupon application. If this fails, attempt to roll back the
+  // coupon increment to keep counts consistent.
+  if (userId) {
+    try {
+      await User.findByIdAndUpdate(userId, {
+        $push: { coupon_applied: { couponId: coupon._id, usedAt: new Date() } },
+      });
+    } catch (userErr) {
+      console.error('Failed to record coupon on user, attempting rollback:', userErr);
+      try {
+        await Coupon.findByIdAndUpdate(coupon._id, { $inc: { usedQuantity: -1 } });
+      } catch (rollbackErr) {
+        console.error('Failed to roll back coupon increment after user update failure:', rollbackErr);
+      }
+      return errorRes(res, 500, 'Failed to record coupon application for user. Please try again.');
+    }
+  }
+
+  // Use the updated coupon counts in the response
+  const remainingQuantity = (updatedCoupon.couponQuantity || 0) - (updatedCoupon.usedQuantity || 0);
+  const usagePercentage = updatedCoupon.couponQuantity
+    ? Math.round(((updatedCoupon.usedQuantity || 0) / updatedCoupon.couponQuantity) * 100)
+    : 0;
+
   successRes(res, {
     valid: true,
     coupon: {
-      _id: coupon._id,
-      couponCode: coupon.couponCode,
-      couponType: coupon.couponType,
-      couponAmount: coupon.couponAmount,
-      description: coupon.description,
-      maxDiscountAmount: coupon.maxDiscountAmount
+      _id: updatedCoupon._id,
+      couponCode: updatedCoupon.couponCode,
+      couponType: updatedCoupon.couponType,
+      couponAmount: updatedCoupon.couponAmount,
+      description: updatedCoupon.description,
+      maxDiscountAmount: updatedCoupon.maxDiscountAmount,
+      remainingQuantity,
+      usagePercentage,
     },
     discountAmount,
     originalAmount: cartAmount,
     finalAmount,
     savings: discountAmount,
-    message: `Coupon applied successfully! You saved ₹${discountAmount}.`
+    message: `Coupon applied successfully! You saved ₹${discountAmount}.`,
   });
 });
 
