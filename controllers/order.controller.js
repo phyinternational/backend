@@ -272,7 +272,7 @@ module.exports.userPreviousOrders_get = catchAsync(async (req, res) => {
       {
         path: "products.product",
         select:
-          "_id displayName brand_title color price product_category displayImage availability",
+          "_id productTitle salePrice category productImageUrl",
       },
       {
         path: "coupon_applied",
