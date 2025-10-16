@@ -99,6 +99,8 @@ module.exports.placeOrder_post = catchAsync(async (req, res) => {
 
   const order = await User_Order.create(orderPayload);
 
+  console.log('📦 Order created with ID:', order._id);
+
   // Send order confirmation email (fire-and-forget)
   try {
     const emailService = require('../services/email.service');
@@ -275,6 +277,9 @@ module.exports.userPreviousOrders_get = catchAsync(async (req, res) => {
           "_id productTitle salePrice category productImageUrl",
       },
       {
+        path: "products.variant",
+      },
+      {
         path: "coupon_applied",
         select: "_id code condition min_price discount_percent is_active",
       },
@@ -414,9 +419,14 @@ module.exports.rzpPaymentVerification = async (req, res) => {
   // For guest orders, req.user might not exist
   const { _id: userId } = req.user || {};
 
+  console.log('🔐 Payment verification received');
+  console.log('🔐 Request body keys:', Object.keys(req.body));
+  console.log('🔐 orderId from body:', req.body.orderId);
+
   try {
     const {
       // razorpay payment verification
+      orderId, // CRITICAL: The existing order ID from placeOrder
       orderCreationId,
       razorpayPaymentId,
       razorpayOrderId,
@@ -429,6 +439,9 @@ module.exports.rzpPaymentVerification = async (req, res) => {
       payment_mode,
       isGuestOrder = false,
     } = req.body;
+
+    console.log('🔐 Extracted orderId:', orderId);
+    console.log('🔐 isGuestOrder:', isGuestOrder);
 
     const shasum = crypto.createHmac("sha256", process.env.RAZORPAY_TEST_KEY_SECRET);
     shasum.update(`${orderCreationId}|${razorpayPaymentId}`);
@@ -546,42 +559,57 @@ module.exports.rzpPaymentVerification = async (req, res) => {
       return errorRes(res, 401, 'Authentication required to verify payment for user orders');
     }
 
-    // Debug: log order payload about to be created for auditing
-    console.log('Creating User_Order with buyer:', userId, 'products count:', Array.isArray(products) ? products.length : 0);
+    // CRITICAL FIX: Update existing order instead of creating a new one
+    if (!orderId) {
+      console.error('rzpPaymentVerification: missing orderId to update existing order');
+      return errorRes(res, 400, 'Order ID is required for payment verification');
+    }
 
-    const order = new User_Order({
-      buyer: userId,
-      products,
-      order_price,
-      coupon_applied,
-      shippingAddress,
-      payment_mode,
-      payment_status: "COMPLETE",
-      rzp_orderId: razorpayOrderId,
-      rzp_paymentId: razorpayPaymentId,
-    });
+    // Find the existing order created by placeOrder
+    const existingOrder = await User_Order.findById(orderId);
+    if (!existingOrder) {
+      console.error('rzpPaymentVerification: order not found', { orderId });
+      return errorRes(res, 404, 'Order not found');
+    }
+
+    // Verify the order belongs to the authenticated user
+    if (String(existingOrder.buyer) !== String(userId)) {
+      console.error('rzpPaymentVerification: order does not belong to user', { 
+        orderId, 
+        orderBuyer: existingOrder.buyer, 
+        userId 
+      });
+      return errorRes(res, 403, 'Unauthorized: Order does not belong to user');
+    }
+
+    // Update the existing order with payment details
+    existingOrder.payment_status = "COMPLETE";
+    existingOrder.rzp_orderId = razorpayOrderId;
+    existingOrder.rzp_paymentId = razorpayPaymentId;
 
     // empty cart
     const cart = await User_Cart.findOne({ user: userId });
     if (cart) {
       cart.products = [];
-      const updatedCart = await cart.save();
+      await cart.save();
     }
 
     // update products' availability
     await Promise.all(
-      order.products.map(async (item) => {
+      existingOrder.products.map(async (item) => {
         try {
-          const product = await Product.findById(item.product._id);
-          product.availability = product.availability - item.quantity;
-          await product.save();
+          const product = await Product.findById(item.product);
+          if (product) {
+            product.availability = product.availability - item.quantity;
+            await product.save();
+          }
         } catch (err) {
-          internalServerError(res, err);
+          console.error('Error updating product availability:', err);
         }
       })
     );
 
-    await order
+    await existingOrder
       .save()
       .then((savedOrder) => {
         savedOrder
@@ -612,7 +640,7 @@ module.exports.rzpPaymentVerification = async (req, res) => {
               orderId: razorpayOrderId,
               paymentId: razorpayPaymentId,
               updatedCart: cart ? { products: [] } : null,
-              message: "Order placed successfully.",
+              message: "Payment verified and order updated successfully.",
             });
           });
       })

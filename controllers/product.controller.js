@@ -48,6 +48,42 @@ module.exports.addProduct_post = catchAsync(async (req, res) => {
     productData.isActive = productData.isActive === "true";
   }
 
+  // ADD: Extract new fields
+  if (productData.ingredients) {
+    productData.ingredients = String(productData.ingredients).trim();
+  }
+  if (productData.benefits) {
+    productData.benefits = String(productData.benefits).trim();
+  }
+
+  // Handle shlok object (can come as JSON string in multipart or as object in JSON)
+  if (productData.shlok) {
+    if (typeof productData.shlok === 'string') {
+      try {
+        productData.shlok = JSON.parse(productData.shlok);
+      } catch (e) {
+        // If parsing fails, treat as plain text for shlokText
+        productData.shlok = {
+          shlokText: productData.shlok,
+          shlokMeaning: ""
+        };
+      }
+    }
+    // Ensure shlok has the correct structure
+    if (!productData.shlok.shlokText) productData.shlok.shlokText = "";
+    if (!productData.shlok.shlokMeaning) productData.shlok.shlokMeaning = "";
+  } else {
+    // Initialize empty shlok if not provided
+    productData.shlok = {
+      shlokText: "",
+      shlokMeaning: ""
+    };
+  }
+
+  if (productData.amazonLink) {
+    productData.amazonLink = String(productData.amazonLink).trim();
+  }
+
   if (productData.productSlug) {
     const findSlug = await Product.findOne({
       productSlug: productData.productSlug,
@@ -220,6 +256,43 @@ module.exports.editProduct_post = catchAsync(async (req, res) => {
     }
   }
 
+  // ADD: Extract new fields
+  if (productData.ingredients) {
+    productData.ingredients = String(productData.ingredients).trim();
+  }
+  if (productData.benefits) {
+    productData.benefits = String(productData.benefits).trim();
+  }
+
+  // Handle shlok object (can come as JSON string in multipart or as object in JSON)
+  if (productData.shlok) {
+    if (typeof productData.shlok === 'string') {
+      try {
+        productData.shlok = JSON.parse(productData.shlok);
+      } catch (e) {
+        // If parsing fails, treat as plain text for shlokText
+        productData.shlok = {
+          shlokText: productData.shlok,
+          shlokMeaning: ""
+        };
+      }
+    }
+    // Ensure shlok has the correct structure
+    if (!productData.shlok.shlokText) productData.shlok.shlokText = "";
+    if (!productData.shlok.shlokMeaning) productData.shlok.shlokMeaning = "";
+  }
+
+  if (productData.amazonLink) {
+    productData.amazonLink = String(productData.amazonLink).trim();
+  }
+
+  if (productData.amazonLink && productData.amazonLink !== "") {
+    // Validate Amazon link format
+    if (!/^https?:\/\/.+/.test(productData.amazonLink)) {
+      return errorRes(res, 400, "Invalid Amazon link URL format");
+    }
+  }
+
   const product = await Product.findByIdAndUpdate(
     productId,
     { $set: productData },
@@ -294,6 +367,143 @@ module.exports.getParticularProduct_get = catchAsync(async (req, res) => {
   if (!product[0]) return errorRes(res, 404, "Product not found.");
 
   successRes(res, { product: product[0], variants, images });
+});
+
+// Get related products based on category, brand, price range, and tags
+module.exports.getRelatedProducts = catchAsync(async (req, res) => {
+  const { productId } = req.params;
+  const limit = parseInt(req.query.limit) || 4;
+
+  // Find the current product
+  const currentProduct = await Product.findById(productId);
+
+  if (!currentProduct) {
+    return errorRes(res, 404, "Product not found.");
+  }
+
+  // Calculate price range (±30% of current product price)
+  const priceMin = currentProduct.salePrice * 0.7;
+  const priceMax = currentProduct.salePrice * 1.3;
+
+  // Build the query to find related products with weighted scoring
+  const relatedProducts = await Product.aggregate([
+    {
+      $match: {
+        _id: { $ne: new mongoose.Types.ObjectId(productId) }, // Exclude current product
+        isActive: true, // Only active products
+      },
+    },
+    {
+      $addFields: {
+        // Calculate relevance score
+        relevanceScore: {
+          $add: [
+            // Same category gets highest score (10 points)
+            {
+              $cond: [
+                { $eq: ["$category", currentProduct.category] },
+                10,
+                0,
+              ],
+            },
+            // Same brand gets medium score (5 points)
+            {
+              $cond: [
+                { $eq: ["$brand", currentProduct.brand] },
+                5,
+                0,
+              ],
+            },
+            // Similar price range gets lower score (3 points)
+            {
+              $cond: [
+                {
+                  $and: [
+                    { $gte: ["$salePrice", priceMin] },
+                    { $lte: ["$salePrice", priceMax] },
+                  ],
+                },
+                3,
+                0,
+              ],
+            },
+            // Featured products get a small boost (2 points)
+            {
+              $cond: ["$isFeatured", 2, 0],
+            },
+          ],
+        },
+      },
+    },
+    {
+      $sort: {
+        relevanceScore: -1, // Sort by relevance first
+        createdAt: -1, // Then by newest
+      },
+    },
+    {
+      $limit: limit,
+    },
+    {
+      $lookup: {
+        from: "categories",
+        localField: "category",
+        foreignField: "_id",
+        as: "category",
+      },
+    },
+    {
+      $lookup: {
+        from: "brands",
+        localField: "brand",
+        foreignField: "_id",
+        as: "brand",
+      },
+    },
+    {
+      $unwind: {
+        path: "$category",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $unwind: {
+        path: "$brand",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $project: {
+        relevanceScore: 0, // Don't include score in response
+      },
+    },
+  ]);
+
+  // If not enough related products found, supplement with random active products
+  if (relatedProducts.length < limit) {
+    const remaining = limit - relatedProducts.length;
+    const relatedProductIds = relatedProducts.map((p) => p._id);
+    
+    const additionalProducts = await Product.find({
+      _id: { 
+        $ne: new mongoose.Types.ObjectId(productId),
+        $nin: relatedProductIds 
+      },
+      isActive: true,
+    })
+      .populate("category", "_id name description displayImage")
+      .populate("brand", "_id brand_name")
+      .sort({ createdAt: -1 })
+      .limit(remaining);
+
+    relatedProducts.push(...additionalProducts);
+  }
+
+  successRes(
+    res,
+    { products: relatedProducts },
+    "Related products retrieved successfully."
+  );
 });
 
 module.exports.deleteProduct_delete = catchAsync(async (req, res) => {

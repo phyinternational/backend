@@ -40,6 +40,8 @@ router.get("/product/get/featured", productController.getFeaturedProducts);
 
 router.get("/product/:productId",addUser, productController.getParticularProduct_get);
 
+router.get("/product/:productId/related", productController.getRelatedProducts);
+
 router.put(
   "/admin/product/:productId/edit",
   requireAdminLogin,

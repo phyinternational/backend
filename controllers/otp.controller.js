@@ -150,13 +150,29 @@ module.exports.verifyOTP_post = catchAsync(async (req, res) => {
         isOnboarded: false,
       });
 
-      // Create cart for new user
-      const newCart = new User_Cart({
-        userId: user._id,
-        products: [],
-      });
-      const cart = await newCart.save();
-      user.cart = cart._id;
+      // Create cart for new user - handle potential duplicate key error
+      try {
+        const newCart = new User_Cart({
+          userId: user._id,
+          products: [],
+        });
+        const cart = await newCart.save();
+        user.cart = cart._id;
+      } catch (cartError) {
+        // If cart creation fails due to duplicate key error, try to find existing cart
+        if (cartError.code === 11000) {
+          console.log('Cart duplicate key error, attempting to find existing cart for user');
+          const existingCart = await User_Cart.findOne({ userId: user._id });
+          if (existingCart) {
+            user.cart = existingCart._id;
+          } else {
+            // If no existing cart found, this is a different issue
+            throw cartError;
+          }
+        } else {
+          throw cartError;
+        }
+      }
       
       await user.save();
     } else {
@@ -169,6 +185,27 @@ module.exports.verifyOTP_post = catchAsync(async (req, res) => {
       // Check if user is blocked
       if (user.isBlocked) {
         return errorRes(res, 403, "User account is blocked by admin");
+      }
+
+      // Ensure user has a cart (create if missing)
+      if (!user.cart) {
+        try {
+          const newCart = new User_Cart({
+            userId: user._id,
+            products: [],
+          });
+          const cart = await newCart.save();
+          user.cart = cart._id;
+          await user.save();
+        } catch (cartError) {
+          if (cartError.code === 11000) {
+            const existingCart = await User_Cart.findOne({ userId: user._id });
+            if (existingCart) {
+              user.cart = existingCart._id;
+              await user.save();
+            }
+          }
+        }
       }
     }
 

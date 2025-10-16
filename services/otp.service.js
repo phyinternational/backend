@@ -54,7 +54,7 @@ const sendOTP = async (phoneNumber, otp = null) => {
 
     // Generate OTP if not provided
     const otpValue = otp || generateOTP();
-    
+    console.log("OTP value: ", otpValue);
     // Format phone number
     const formattedPhone = formatPhoneNumber(phoneNumber);
     

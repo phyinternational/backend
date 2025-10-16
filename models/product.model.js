@@ -29,6 +29,47 @@ const productSchema = new mongoose.Schema({
   }],
   brand: { type: mongoose.Schema.Types.ObjectId, ref: "Brand" },
 
+  // NEW FIELDS
+  ingredients: { 
+    type: String, 
+    default: "",
+    maxlength: 2000,
+    trim: true
+  },
+  benefits: { 
+    type: String, 
+    default: "",
+    maxlength: 2000,
+    trim: true
+  },
+  shlok: {
+    shlokText: {
+      type: String,
+      default: "",
+      maxlength: 500,
+      trim: true
+    },
+    shlokMeaning: {
+      type: String,
+      default: "",
+      maxlength: 1000,
+      trim: true
+    }
+  },
+  amazonLink: { 
+    type: String, 
+    default: "",
+    trim: true,
+    validate: {
+      validator: function(v) {
+        // Allow empty strings or valid URLs
+        if (!v || v === "") return true;
+        // Basic URL validation - should start with http:// or https://
+        return /^https?:\/\/.+/.test(v);
+      },
+      message: props => `${props.value} is not a valid URL!`
+    }
+  }
 });
 
 // Create the model
