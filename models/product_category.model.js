@@ -14,6 +14,11 @@ const categorySchema = new mongoose.Schema(
       ref: "ProductCategory", // Reference the "ProductCategory" model
     },
     imageUrl: String,
+    isActive: {
+      type: Boolean,
+      default: true,
+      required: true
+    },
   },
   {
     timestamps: true, // Add this option for createdAt and updatedAt fields

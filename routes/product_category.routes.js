@@ -52,6 +52,7 @@ router.get(
   categoryController.getSingleCategory_get
 );
 router.get("/product/category/all", categoryController.allCategory_get);
+router.get("/product/category/active", categoryController.getActiveCategories_get);
 router.get(
   "/product/subcategory/all",
   categoryController.getAllSubcategories

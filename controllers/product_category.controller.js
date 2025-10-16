@@ -11,7 +11,7 @@ const Product = require("../models/product.model");
 const getAllNestedSubcategories = require("../utility/utils");
 
 module.exports.addProductCategory_post = catchAsync(async (req, res) => {
-  const { type, name, slug, parentId = null } = req.body;
+  const { type, name, slug, parentId = null, isActive = true } = req.body;
   let imageUrl = req.body.imageUrl;
 
   // Handle image upload if file is present
@@ -39,6 +39,7 @@ module.exports.addProductCategory_post = catchAsync(async (req, res) => {
     imageUrl,
     slug,
     parentId: finalParentId,
+    isActive,
   });
   const savedCategory = await category.save();
 
@@ -55,13 +56,14 @@ module.exports.addProductCategory_post = catchAsync(async (req, res) => {
       type: savedType,
       name: savedName,
       imageUrl: savedImageUrl,
+      isActive: savedCategory.isActive,
     },
     message: "Category added successfully.",
   });
 });
 
 module.exports.addSubCategory_post = catchAsync(async (req, res) => {
-  const { name, slug, parentId } = req.body;
+  const { name, slug, parentId, isActive = true } = req.body;
   let imageUrl = req.body.imageUrl;
 
   // Handle image upload if file is present
@@ -81,7 +83,7 @@ module.exports.addSubCategory_post = catchAsync(async (req, res) => {
     return errorRes(res, 400, "Category with given name already exists.");
   }
 
-  const category = new ProductCategory({ name, slug, parentId, imageUrl });
+  const category = new ProductCategory({ name, slug, parentId, imageUrl, isActive });
   const savedCategory = await category.save();
 
   const { name: savedName, parentId: savedParentId, _id } = savedCategory;
@@ -98,6 +100,15 @@ module.exports.addSubCategory_post = catchAsync(async (req, res) => {
 
 module.exports.allCategory_get = catchAsync(async (req, res) => {
   const categories = await ProductCategory.find()
+    .sort({ createdAt: 1 })
+    .select("-__v");
+  return successRes(res, {
+    categories,
+  });
+});
+
+module.exports.getActiveCategories_get = catchAsync(async (req, res) => {
+  const categories = await ProductCategory.find({ isActive: true })
     .sort({ createdAt: 1 })
     .select("-__v");
   return successRes(res, {
@@ -138,7 +149,7 @@ module.exports.deleteProductCategory_delete = async (req, res) => {
 };
 module.exports.editCategory = catchAsync(async (req, res) => {
   const { categoryId } = req.params;
-  const { name } = req.body;
+  const { name, type, slug, parentId, isActive } = req.body;
   let imageUrl = req.body.imageUrl;
   if (!categoryId) return errorRes(res, 400, "Category ID is required.");
   if (!name) return errorRes(res, 400, "Category name is required.");
@@ -151,7 +162,11 @@ module.exports.editCategory = catchAsync(async (req, res) => {
   }
 
   category.name = name;
+  if (type) category.type = type;
+  if (slug) category.slug = slug;
+  if (parentId !== undefined) category.parentId = parentId === "" ? null : parentId;
   if (imageUrl) category.imageUrl = imageUrl;
+  if (typeof isActive !== 'undefined') category.isActive = isActive;
 
   const updatedCategory = await category.save();
   return successRes(res, {
