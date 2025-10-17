@@ -111,6 +111,7 @@ const corsOptions = {
   origin: [
     "https://raajsi-frontend.vercel.app",
     "https://raajsi.in",
+    "https://admin-two-sage-79.vercel.app",
     "http://localhost:3000",
     "http://localhost:3001",
     "http://localhost:5173",
