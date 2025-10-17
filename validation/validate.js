@@ -9,7 +9,6 @@ const validate = (schema) => (req, res, next) => {
     });
 
     if (result.success === false) {
-        console.log(req.body);
         const formattedError = fromZodError(result.error).message;
         return res.status(400).json({ error: formattedError });
     }
