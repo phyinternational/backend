@@ -148,6 +148,9 @@ module.exports.verifyOTP_post = catchAsync(async (req, res) => {
         phoneNumber: formattedPhone,
         isPhoneVerified: true,
         isOnboarded: false,
+        shippingAddress: {
+          phoneNumber: formattedPhone
+        },
       });
 
       // Create cart for new user - handle potential duplicate key error
