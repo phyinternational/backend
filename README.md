@@ -30,11 +30,3 @@ node -e "require('./services/email.service')"
 ```
 
 To actually send a test email, you can create a small script that calls the service methods.
-
-## Where emails are sent from
-
-- Guest order confirmation: `controllers/guest-checkout.controller.js` (calls `services/email.service.js`)
-- User order confirmation: `controllers/order.controller.js` (on placeOrder and payment success)
-
-If you want I can add a dedicated CLI test script to send a sample email.
-# Raajsi Backend
