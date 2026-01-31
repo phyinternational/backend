@@ -99,7 +99,8 @@ app.use(speedLimiter);
 // Input sanitization
 app.use(sanitizeInput);
 
-app.use(express.json({ extended: true, limit: '10mb' }));
+app.use(express.json({ extended: true, limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 app.set('trust proxy', 1);
 
