@@ -55,6 +55,7 @@ const bulk_upload_routes = require("./routes/bulk-upload.routes");
 const stripe_payment_routes = require("./routes/stripe-payment.routes");
 const inventory_routes = require("./routes/inventory.routes");
 const otp_routes = require("./routes/otp.routes");
+const analytics_routes = require("./routes/analytics.routes");
 
 const passport = require("./utility/passport");
 const PORT = process.env.PORT || 5000;
@@ -139,6 +140,7 @@ app.use(banner_routes);
 app.use(site_trending_product_routes);
 app.use(product_varient_routes);
 app.use(tnc_routes);
+app.use(analytics_routes);
 
 // Use new routes
 app.use(guest_checkout_routes);
