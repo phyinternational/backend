@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const { errorRes, successRes, internalServerError } = require("../utility");
 const Coupon = require("../models/coupon.model");
-const User = require("../models/user.model");
+const User = mongoose.model("User");
 const catchAsync = require("../utility/catch-async");
 
 // Create a new coupon

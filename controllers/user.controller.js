@@ -229,7 +229,14 @@ module.exports.allusers_get = (req, res) => {
 
   const filter = {};
   if (search) {
-    filter.name = { $regex: search, $options: "i" };
+    filter.$or = [
+      { name: { $regex: search, $options: "i" } },
+      { email: { $regex: search, $options: "i" } },
+      { phoneNumber: { $regex: search, $options: "i" } },
+      { "shippingAddress.firstName": { $regex: search, $options: "i" } },
+      { "shippingAddress.lastName": { $regex: search, $options: "i" } },
+      { "shippingAddress.email": { $regex: search, $options: "i" } },
+    ];
   }
 
   User.find(filter)

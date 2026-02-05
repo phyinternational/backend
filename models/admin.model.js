@@ -16,6 +16,7 @@ const adminSchema = new mongoose.Schema({
   },
   accountType: {
     type: String,
+    enum: ["admin", "super-admin"],
     default: "admin",
   },
 },{timestamps:true});
