@@ -58,9 +58,74 @@ const OrderSchema = mongoose.Schema(
     },
     order_status: {
       type: String,
-      enum: ["PLACED", "SHIPPED", "DELIVERED", "CANCELLED_BY_ADMIN"],
+      enum: [
+        "PLACED",
+        "SHIPPED",
+        "DELIVERED",
+        "CANCELLED_BY_ADMIN",
+        "CANCELLED_BY_USER",
+        "RETURN_REQUESTED",
+        "RETURN_APPROVED",
+        "RETURN_REJECTED",
+        "RETURNED",
+        "REPLACEMENT_REQUESTED",
+        "REPLACEMENT_APPROVED",
+        "REPLACEMENT_REJECTED",
+        "REPLACEMENT_IN_PROGRESS",
+      ],
       required: true,
       default: "PLACED",
+    },
+    deliveredAt: {
+      type: Date,
+      default: null,
+    },
+    parent_order: {
+      type: ObjectId,
+      ref: "User_Order",
+      default: null,
+    },
+    status_history: [
+      {
+        status: String,
+        reason: String,
+        updatedBy: {
+          type: ObjectId,
+          ref: "Admin",
+        },
+        updatedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+    cancellation: {
+      reason: String,
+      cancelledAt: Date,
+    },
+    return_request: {
+      reason: String,
+      proof_images: [String],
+      admin_comment: String,
+      status: {
+        type: String,
+        enum: ["PENDING", "APPROVED", "REJECTED"],
+        default: "PENDING",
+      },
+      requestedAt: Date,
+      updatedAt: Date,
+    },
+    replacement_request: {
+      reason: String,
+      proof_images: [String],
+      admin_comment: String,
+      status: {
+        type: String,
+        enum: ["PENDING", "APPROVED", "REJECTED"],
+        default: "PENDING",
+      },
+      requestedAt: Date,
+      updatedAt: Date,
     },
     cc_orderId: {
       type: String,
@@ -70,9 +135,34 @@ const OrderSchema = mongoose.Schema(
       type: String,
       // required: true,
     },
+    order_price: {
+      type: Number,
+      default: 0,
+    },
+    total_amount_paid: {
+      type: Number,
+      default: 0,
+    },
+    coupon_discount: {
+      type: Number,
+      default: 0,
+    },
   },
-  { timestamps: true }
+  { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
+
+// Indexes for analytics performance
+OrderSchema.index({ createdAt: -1 });
+OrderSchema.index({ order_status: 1 });
+OrderSchema.index({ payment_status: 1 });
+OrderSchema.index({ buyer: 1 });
+OrderSchema.index({ parent_order: 1 });
+OrderSchema.index({ createdAt: -1, order_status: 1 });
+
+// Virtual field for order total (sum of product price * quantity)
+OrderSchema.virtual("orderTotal").get(function () {
+  return this.products.reduce((sum, item) => sum + item.price * item.quantity, 0);
+});
 
 mongoose.model("User_Order", OrderSchema);
 

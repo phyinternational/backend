@@ -65,6 +65,33 @@ router.get(
   orderController.adminOrderDetails_get
 );
 
+router.post(
+  "/user/order/:orderId/cancel",
+  requireUserLogin,
+  orderController.cancelOrderByUser
+);
+router.post(
+  "/user/order/:orderId/return",
+  requireUserLogin,
+  orderController.requestReturn
+);
+router.post(
+  "/user/order/:orderId/replacement",
+  requireUserLogin,
+  orderController.requestReplacement
+);
+
+router.post(
+  "/admin/order/:orderId/approve-request",
+  requireAdminLogin,
+  orderController.adminApproveRequest
+);
+router.post(
+  "/admin/order/:orderId/reject-request",
+  requireAdminLogin,
+  orderController.adminRejectRequest
+);
+
 // ccavenue routes
 router.post(
   "/ccavenue-createOrder",

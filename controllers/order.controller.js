@@ -15,9 +15,30 @@ const qs = require("querystring");
 const ccav = require("../utility/ccavutil");
 const catchAsync = require("../utility/catch-async");
 const ProductVariant = require("../models/product_varient");
+const Inventory = require("../models/inventory.model");
 const { buildPaginatedSortedFilteredQuery } = require("../utility/mogoose");
-const { addProductUpdateNotification } = require("./notification.controller");
+const { addProductUpdateNotification, createNotification } = require("./notification.controller");
 require("dotenv").config();
+
+// Helper to update inventory stock based on order status changes
+const updateInventoryForOrder = async (order, type, reason, performedBy = null) => {
+  try {
+    const stockPromises = order.products.map(async (item) => {
+      const inventory = await Inventory.findOne({
+        product: item.product,
+        variant: item.variant || null,
+      });
+
+      if (inventory) {
+        await inventory.updateStock(item.quantity, type, reason, order._id, performedBy);
+      }
+    });
+
+    await Promise.all(stockPromises);
+  } catch (error) {
+    console.error("Error updating inventory for order:", error);
+  }
+};
 
 module.exports.placeOrder_post = catchAsync(async (req, res) => {
   const { products } = req.body;
@@ -118,8 +139,53 @@ module.exports.placeOrder_post = catchAsync(async (req, res) => {
 });
 
 module.exports.getAllOrders_get = catchAsync(async (req, res) => {
+  const { status, search, startDate, endDate, payment_mode, payment_status, minPrice, maxPrice } = req.query;
+  let filter = {};
+
+  if (status) {
+    if (status === 'return') {
+      filter.order_status = { $in: ['RETURN_REQUESTED', 'RETURN_APPROVED', 'RETURN_REJECTED', 'RETURNED'] };
+    } else if (status === 'replacement') {
+      filter.order_status = { $in: ['REPLACEMENT_REQUESTED', 'REPLACEMENT_APPROVED', 'REPLACEMENT_REJECTED', 'REPLACEMENT_IN_PROGRESS'] };
+    } else if (status === 'cancelled') {
+      filter.order_status = { $in: ['CANCELLED_BY_USER', 'CANCELLED_BY_ADMIN', 'CANCELLED'] };
+    } else {
+      filter.order_status = status;
+    }
+  }
+
+  // Date filter
+  if (startDate || endDate) {
+    filter.createdAt = {};
+    if (startDate) filter.createdAt.$gte = new Date(startDate);
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      filter.createdAt.$lte = end;
+    }
+  }
+
+  // Payment mode and status
+  if (payment_mode) filter.payment_mode = payment_mode;
+  if (payment_status) filter.payment_status = payment_status;
+
+  // Price range
+  if (minPrice || maxPrice) {
+    filter.total_amount_paid = {}; // Using total_amount_paid as it's the final value
+    if (minPrice) filter.total_amount_paid.$gte = Number(minPrice);
+    if (maxPrice) filter.total_amount_paid.$lte = Number(maxPrice);
+  }
+
+  // Basic search by order ID if provided
+  if (search && search.length === 24) {
+    filter._id = search;
+  } else if (search) {
+    // If search is not a 24-char ID, we could search in user name or something else in the future
+    // for now keep it simple or use regex if supported in helper
+  }
+
   const orders = await buildPaginatedSortedFilteredQuery(
-    User_Order.find()
+    User_Order.find(filter)
       .sort("-createdAt")
       .populate([
         { path: "buyer" },
@@ -288,58 +354,68 @@ module.exports.userPreviousOrders_get = catchAsync(async (req, res) => {
     .catch((err) => internalServerError(res, err));
 });
 
-module.exports.updateOrder_post = catchAsync( async (req, res) => {
+module.exports.updateOrder_post = catchAsync(async (req, res) => {
   const { orderId } = req.params;
-  const { payment_status, order_status } = req.body;
-  const updates = {};
+  const { payment_status, order_status, reason } = req.body;
 
   if (!orderId) return errorRes(res, 400, "Order Id is required.");
-  
+
   // Validate ObjectId format
   if (!mongoose.Types.ObjectId.isValid(orderId)) {
     return errorRes(res, 400, "Invalid Order ID format.");
   }
-  if (payment_status) updates.payment_status = payment_status;
+
+  const order = await User_Order.findById(orderId);
+  if (!order) return errorRes(res, 404, "Order does not exist.");
+
+  if (payment_status) order.payment_status = payment_status;
+
   if (order_status) {
-    // Normalize incoming order_status to match schema enum values (e.g. "CANCELLED BY ADMIN" -> "CANCELLED_BY_ADMIN")
-    if (typeof order_status === 'string') {
-      updates.order_status = order_status.trim().replace(/\s+/g, '_').toUpperCase();
-    } else {
-      updates.order_status = order_status;
+    const oldStatus = order.order_status;
+    const normalizedStatus = typeof order_status === 'string'
+      ? order_status.trim().replace(/\s+/g, '_').toUpperCase()
+      : order_status;
+
+    order.order_status = normalizedStatus;
+
+    // Handle delivery timestamp
+    if (normalizedStatus === "DELIVERED" && oldStatus !== "DELIVERED") {
+      order.deliveredAt = new Date();
     }
+
+    // Handle inventory restocking for cancellations or returns
+    if ((normalizedStatus === "CANCELLED_BY_ADMIN" || normalizedStatus === "RETURNED") && oldStatus !== normalizedStatus) {
+      await updateInventoryForOrder(order, "RETURN", normalizedStatus === "RETURNED" ? "Customer Return" : "Admin Cancellation", req.admin?._id);
+    }
+
+    // Record in history
+    order.status_history.push({
+      status: normalizedStatus,
+      reason: reason || "Status updated by admin",
+      updatedBy: req.admin?._id,
+      updatedAt: new Date(),
+    });
   }
 
-  if (Object.keys(updates).length == 0)
-    return errorRes(res, 400, "No updates made.");
+  await order.save();
 
-  User_Order.findByIdAndUpdate(orderId, updates, {
-    new: true,
-    runValidators: true,
-  })
-    .then((updatedOrder) => {
-      if (!updatedOrder) return errorRes(res, 404, "Order does not exist.");
-      updatedOrder
-        .populate([
-          { path: "buyer", select: "_id displayName email" },
-          {
-            path: "products.product",
-            select:
-              "_id displayName brand_title color price product_category displayImage availability",
-          },
-          {
-            path: "coupon_applied",
-            select: "_id code condition min_price discount_percent is_active",
-          },
-        ])
-        .then((result) =>
-          successRes(res, {
-            updatedOrder: result,
-            message: "Order updated successfully.",
-          })
-        )
-        .catch((err) => internalServerError(res, err));
-    })
-    .catch((err) => internalServerError(res, err));
+  const result = await order.populate([
+    { path: "buyer", select: "_id name email" },
+    {
+      path: "products.product",
+      select: "_id productTitle skuNo productImageUrl salePrice",
+    },
+    { path: "products.variant" },
+    {
+      path: "coupon_applied",
+      select: "_id code condition min_price discount_percent is_active",
+    },
+  ]);
+
+  return successRes(res, {
+    updatedOrder: result,
+    message: "Order updated successfully.",
+  });
 });
 
 module.exports.userOrderUpadte_put = catchAsync(async (req, res) => {
@@ -705,7 +781,16 @@ module.exports.ccavenue_creatOrder_post = async (req, res) => {
 
     await order
       .save()
-      .then((savedOrder) => {
+      .then(async (savedOrder) => {
+        // Notify Admin
+        await createNotification({
+          userId: userId,
+          orderId: savedOrder._id,
+          type: 'NEW_ORDER',
+          title: 'New Order Placed',
+          text: `A new order #${savedOrder._id} has been placed by ${req.user.displayName || 'Customer'}.`
+        });
+
         savedOrder
           .populate([
             { path: "buyer", select: "_id displayName email" },
@@ -889,3 +974,246 @@ module.exports.ccavenueresponsehandler = async (request, response) => {
     }
   });
 };
+
+module.exports.cancelOrderByUser = catchAsync(async (req, res) => {
+  const { orderId } = req.params;
+  const { reason } = req.body;
+
+  if (!reason) return errorRes(res, 400, "Cancellation reason is required.");
+
+  const order = await User_Order.findById(orderId);
+  if (!order) return errorRes(res, 404, "Order not found.");
+
+  if (order.buyer.toString() !== req.user._id.toString()) {
+    return errorRes(res, 403, "You are not authorized to cancel this order.");
+  }
+
+  const hoursSincePlacement = (Date.now() - order.createdAt) / (1000 * 60 * 60);
+  if (hoursSincePlacement > 48) {
+    return errorRes(res, 400, "Orders can only be cancelled within 48 hours of placement.");
+  }
+
+  if (order.order_status !== "PLACED") {
+    return errorRes(res, 400, "Only orders in 'PLACED' status can be cancelled.");
+  }
+
+  order.order_status = "CANCELLED_BY_USER";
+  order.cancellation = {
+    reason,
+    cancelledAt: new Date(),
+  };
+  order.status_history.push({
+    status: "CANCELLED_BY_USER",
+    reason,
+    updatedAt: new Date(),
+  });
+
+  await order.save();
+
+  // Restock items
+  await updateInventoryForOrder(order, "RETURN", "User Cancellation", null);
+
+  // Notify Admin
+  await createNotification({
+    userId: req.user._id,
+    orderId: order._id,
+    type: 'CANCELLATION',
+    title: 'Order Cancelled',
+    text: `User ${req.user.displayName || 'Customer'} has cancelled Order #${order._id}. Reason: ${reason}`
+  });
+
+  return successRes(res, { message: "Order cancelled successfully.", data: order });
+});
+
+module.exports.requestReturn = catchAsync(async (req, res) => {
+  const { orderId } = req.params;
+  const { reason, proof_images } = req.body;
+
+  if (!reason) return errorRes(res, 400, "Return reason is required.");
+
+  const order = await User_Order.findById(orderId);
+  if (!order) return errorRes(res, 404, "Order not found.");
+
+  if (order.buyer.toString() !== req.user._id.toString()) {
+    return errorRes(res, 403, "You are not authorized for this action.");
+  }
+
+  if (order.order_status !== "DELIVERED") {
+    return errorRes(res, 400, "Returns can only be requested after delivery.");
+  }
+
+  const daysSinceDelivery = (Date.now() - (order.deliveredAt || order.updatedAt)) / (1000 * 60 * 60 * 24);
+  if (daysSinceDelivery > 7) {
+    return errorRes(res, 400, "7-day return window has expired.");
+  }
+
+  order.order_status = "RETURN_REQUESTED";
+  order.return_request = {
+    reason,
+    proof_images: proof_images || [],
+    status: "PENDING",
+    requestedAt: new Date(),
+  };
+  order.status_history.push({
+    status: "RETURN_REQUESTED",
+    reason,
+    updatedAt: new Date(),
+  });
+
+  await order.save();
+
+  // Notify Admin
+  await createNotification({
+    userId: req.user._id,
+    orderId: order._id,
+    type: 'RETURN_REQUEST',
+    title: 'Return Requested',
+    text: `User ${req.user.displayName || 'Customer'} requested a return for Order #${order._id}. Reason: ${reason}`
+  });
+
+  return successRes(res, { message: "Return requested successfully.", data: order });
+});
+
+module.exports.requestReplacement = catchAsync(async (req, res) => {
+  const { orderId } = req.params;
+  const { reason, proof_images } = req.body;
+
+  if (!reason) return errorRes(res, 400, "Replacement reason is required.");
+
+  const order = await User_Order.findById(orderId);
+  if (!order) return errorRes(res, 404, "Order not found.");
+
+  if (order.buyer.toString() !== req.user._id.toString()) {
+    return errorRes(res, 403, "You are not authorized for this action.");
+  }
+
+  if (order.order_status !== "DELIVERED") {
+    return errorRes(res, 400, "Replacement can only be requested after delivery.");
+  }
+
+  const daysSinceDelivery = (Date.now() - (order.deliveredAt || order.updatedAt)) / (1000 * 60 * 60 * 24);
+  if (daysSinceDelivery > 7) {
+    return errorRes(res, 400, "7-day replacement window has expired.");
+  }
+
+  order.order_status = "REPLACEMENT_REQUESTED";
+  order.replacement_request = {
+    reason,
+    proof_images: proof_images || [],
+    status: "PENDING",
+    requestedAt: new Date(),
+  };
+  order.status_history.push({
+    status: "REPLACEMENT_REQUESTED",
+    reason,
+    updatedAt: new Date(),
+  });
+
+  await order.save();
+
+  // Notify Admin
+  await createNotification({
+    userId: req.user._id,
+    orderId: order._id,
+    type: 'REPLACEMENT_REQUEST',
+    title: 'Replacement Requested',
+    text: `User ${req.user.displayName || 'Customer'} requested a replacement for Order #${order._id}. Reason: ${reason}`
+  });
+
+  return successRes(res, { message: "Replacement requested successfully.", data: order });
+});
+
+module.exports.adminApproveRequest = catchAsync(async (req, res) => {
+  const { orderId } = req.params;
+  const { type, admin_comment, overrideWindow } = req.body; // type: 'return' or 'replacement'
+
+  if (!admin_comment) return errorRes(res, 400, "Admin comment is required.");
+
+  const order = await User_Order.findById(orderId);
+  if (!order) return errorRes(res, 404, "Order not found.");
+
+  // Role check for override if needed
+  if (overrideWindow && req.admin?.accountType !== 'super-admin') {
+    return errorRes(res, 403, "Only Super Admins can override the 7-day window.");
+  }
+
+  if (type === 'return') {
+    order.order_status = "RETURN_APPROVED";
+    order.return_request.status = "APPROVED";
+    order.return_request.admin_comment = admin_comment;
+    order.return_request.updatedAt = new Date();
+  } else if (type === 'replacement') {
+    order.order_status = "REPLACEMENT_APPROVED";
+    order.replacement_request.status = "APPROVED";
+    order.replacement_request.admin_comment = admin_comment;
+    order.replacement_request.updatedAt = new Date();
+
+    // Create a new linked order for replacement
+    const replacementOrder = new User_Order({
+      buyer: order.buyer,
+      products: order.products.map(p => ({ 
+        product: p.product,
+        variant: p.variant,
+        quantity: p.quantity,
+        price: 0 
+      })),
+      shippingAddress: order.shippingAddress,
+      payment_mode: order.payment_mode,
+      payment_status: "COMPLETE",
+      order_status: "PLACED",
+      parent_order: order._id,
+    });
+    await replacementOrder.save();
+    
+    // Decrease inventory for the new items
+    await updateInventoryForOrder(replacementOrder, "OUT", "Replacement Order", req.admin?._id);
+  } else {
+    return errorRes(res, 400, "Invalid request type.");
+  }
+
+  order.status_history.push({
+    status: order.order_status,
+    reason: admin_comment,
+    updatedBy: req.admin?._id,
+    updatedAt: new Date(),
+  });
+
+  await order.save();
+
+  return successRes(res, { message: `${type} approved successfully.`, data: order });
+});
+
+module.exports.adminRejectRequest = catchAsync(async (req, res) => {
+  const { orderId } = req.params;
+  const { type, admin_comment } = req.body;
+
+  if (!admin_comment) return errorRes(res, 400, "Admin comment is required.");
+
+  const order = await User_Order.findById(orderId);
+  if (!order) return errorRes(res, 404, "Order not found.");
+
+  if (type === 'return') {
+    order.order_status = "RETURN_REJECTED";
+    order.return_request.status = "REJECTED";
+    order.return_request.admin_comment = admin_comment;
+    order.return_request.updatedAt = new Date();
+  } else if (type === 'replacement') {
+    order.order_status = "REPLACEMENT_REJECTED";
+    order.replacement_request.status = "REJECTED";
+    order.replacement_request.admin_comment = admin_comment;
+    order.replacement_request.updatedAt = new Date();
+  } else {
+    return errorRes(res, 400, "Invalid request type.");
+  }
+
+  order.status_history.push({
+    status: order.order_status,
+    reason: admin_comment,
+    updatedBy: req.admin?._id,
+    updatedAt: new Date(),
+  });
+
+  await order.save();
+
+  return successRes(res, { message: `${type} rejected successfully.`, data: order });
+});
