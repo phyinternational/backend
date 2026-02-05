@@ -26,6 +26,10 @@ const blogSchema = mongoose.Schema(
         },
       },
     ],
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
   },
   { timestamps: true }
 );

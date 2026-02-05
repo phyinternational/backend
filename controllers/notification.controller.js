@@ -32,7 +32,7 @@ exports.getNotifications = catchAsync(async (req, res, next) => {
     }
 
     const notifications = await buildPaginatedSortedFilteredQuery(
-      Notification.find(filter),
+      Notification.find(filter).populate('userId orderId adminId'),
       req,
       Notification
     );
@@ -49,11 +49,23 @@ exports.getNotifications = catchAsync(async (req, res, next) => {
   
 });
 
+exports.createNotification = async (data) => {
+  try {
+    const notification = new Notification(data);
+    await notification.save();
+    return notification;
+  } catch (err) {
+    console.log(`Error occurred while creating notification :: ${err}`);
+  }
+};
+
 exports.addProductUpdateNotification = catchAsync(async (userId, orderId) => {
   const notification = new Notification({
     userId,
     orderId,
-    text: `:order has been updated by the :user`,
+    type: 'ORDER_UPDATE',
+    title: 'Order Updated',
+    text: `Order #${orderId} has been updated by the user`,
   });
   await notification.save();
 

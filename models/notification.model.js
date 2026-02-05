@@ -3,16 +3,27 @@ const mongoose = require('mongoose')
 const notificationSchema = mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
-    required: [true, 'userId is required'],
-    ref: 'Company'
+    ref: 'User'
+  },
+  adminId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Admin'
   },
   orderId: {
     type: mongoose.Schema.Types.ObjectId,
-    required: [true, 'orderId is required'],
-    ref: 'Order'
+    ref: 'User_Order'
+  },
+  title: {
+    type: String
   },
   text: {
-    type: String
+    type: String,
+    required: true
+  },
+  type: {
+    type: String,
+    enum: ['NEW_ORDER', 'CANCELLATION', 'RETURN_REQUEST', 'REPLACEMENT_REQUEST', 'ORDER_UPDATE'],
+    default: 'ORDER_UPDATE'
   },
   status: {
     type: String,
@@ -21,7 +32,7 @@ const notificationSchema = mongoose.Schema({
   },
   createdAt: {
     type: Date,
-    default: Date.now()
+    default: Date.now
   },
   updatedAt: {
     type: Date

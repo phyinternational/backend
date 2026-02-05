@@ -90,12 +90,13 @@ module.exports.editBlog = catchAsync(async (req, res) => {
   successRes(res, { blog, message: "Blog updated successfully." });
 });
 
-module.exports.getAllBlogs_get = (req, res) => {
-  Blog.find()
-    .sort("-createdAt")
-    .then((blogs) => successRes(res, { blogs }))
-    .catch((err) => internalServerError(res, err));
-};
+module.exports.getAllBlogs_get = catchAsync(async (req, res) => {
+  const { admin } = req.query;
+  const filter = admin === "true" ? {} : { isActive: { $ne: false } };
+  
+  const blogs = await Blog.find(filter).sort("-createdAt");
+  successRes(res, { blogs });
+});
 
 module.exports.deleteBlog = catchAsync(async (req, res) => {
   const { _id } = req.params;
@@ -104,9 +105,30 @@ module.exports.deleteBlog = catchAsync(async (req, res) => {
   successRes(res, { message: "Blog deleted successfully." });
 });
 
+module.exports.toggleBlogStatus = catchAsync(async (req, res) => {
+  const { _id } = req.params;
+  const blog = await Blog.findById(_id);
+  if (!blog) return errorRes(res, 404, "Blog does not exist.");
+  
+  blog.isActive = !blog.isActive;
+  await blog.save();
+  
+  successRes(res, { 
+    blog, 
+    message: `Blog ${blog.isActive ? 'activated' : 'deactivated'} successfully.` 
+  });
+});
+
 module.exports.getBlogBySlug = catchAsync(async (req, res) => {
   const { slug } = req.params;
   const blog = await Blog.findOne({ slug });
+  if (!blog) return errorRes(res, 404, "Blog not found.");
+  successRes(res, { blog });
+});
+
+module.exports.getBlogById = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const blog = await Blog.findById(id);
   if (!blog) return errorRes(res, 404, "Blog not found.");
   successRes(res, { blog });
 });

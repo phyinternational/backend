@@ -12,9 +12,22 @@ const bannerSchema = new mongoose.Schema(
     ],
     title: {
       type: String,
+      required: true,
     },
     content: {
       type: String,
+      maxlength: 100
+    },
+    meaning: {
+      type: String,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+    position: {
+      type: Number,
+      default: 0,
     },
     slug: {
       type: String,
