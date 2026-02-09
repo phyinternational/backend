@@ -6,7 +6,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "check-orders": "node scripts/check-affected-orders.js",
+    "cleanup-orders": "node scripts/cleanup-return-replacement-requests.js"
   },
   "author": "piyush_r",
   "license": "ISC",
