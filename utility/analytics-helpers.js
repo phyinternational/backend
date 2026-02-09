@@ -61,8 +61,130 @@ const calculateOrderTotalStage = () => {
   };
 };
 
+/**
+ * Aggregation stage to calculate item-level deductions from order total.
+ * Computes cancelledItemsValue and approvedReturnItemsValue by cross-referencing
+ * cancelled_items/item_return_requests with the products array.
+ * Must be used AFTER calculateOrderTotalStage().
+ * @returns {Object} $addFields stage
+ */
+const calculateItemDeductionsStage = () => {
+  // Reusable sub-expression: find a matching product's price for a given item
+  const matchProductPrice = (itemProductField) => ({
+    $let: {
+      vars: {
+        matchedProduct: {
+          $arrayElemAt: [
+            {
+              $filter: {
+                input: "$products",
+                as: "p",
+                cond: { $eq: ["$$p.product", itemProductField] }
+              }
+            },
+            0
+          ]
+        }
+      },
+      in: { $ifNull: ["$$matchedProduct.price", 0] }
+    }
+  });
+
+  return {
+    $addFields: {
+      // Sum of (price * qty) for all cancelled items
+      cancelledItemsValue: {
+        $reduce: {
+          input: { $ifNull: ["$cancelled_items", []] },
+          initialValue: 0,
+          in: {
+            $add: [
+              "$$value",
+              {
+                $multiply: [
+                  matchProductPrice("$$this.product"),
+                  { $ifNull: ["$$this.quantity", 0] }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      // Sum of (price * qty) for item-level returns with APPROVED status
+      approvedReturnItemsValue: {
+        $reduce: {
+          input: {
+            $filter: {
+              input: { $ifNull: ["$item_return_requests", []] },
+              as: "r",
+              cond: { $eq: ["$$r.status", "APPROVED"] }
+            }
+          },
+          initialValue: 0,
+          in: {
+            $add: [
+              "$$value",
+              {
+                $multiply: [
+                  matchProductPrice("$$this.product"),
+                  { $ifNull: ["$$this.quantity", 0] }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  };
+};
+
+/**
+ * Aggregation stage to check if a specific unwound product is cancelled or has an approved return.
+ * Use AFTER { $unwind: "$products" } to filter out cancelled/returned items from revenue queries.
+ * @returns {Object} $addFields stage
+ */
+const checkItemCancelledOrReturnedStage = () => ({
+  $addFields: {
+    _isItemCancelled: {
+      $gt: [
+        {
+          $size: {
+            $filter: {
+              input: { $ifNull: ["$cancelled_items", []] },
+              as: "c",
+              cond: { $eq: ["$$c.product", "$products.product"] }
+            }
+          }
+        },
+        0
+      ]
+    },
+    _isItemReturnApproved: {
+      $gt: [
+        {
+          $size: {
+            $filter: {
+              input: { $ifNull: ["$item_return_requests", []] },
+              as: "r",
+              cond: {
+                $and: [
+                  { $eq: ["$$r.product", "$products.product"] },
+                  { $eq: ["$$r.status", "APPROVED"] }
+                ]
+              }
+            }
+          }
+        },
+        0
+      ]
+    }
+  }
+});
+
 module.exports = {
   buildDateRangeFilter,
   getValidOrderMatch,
-  calculateOrderTotalStage
+  calculateOrderTotalStage,
+  calculateItemDeductionsStage,
+  checkItemCancelledOrReturnedStage
 };
