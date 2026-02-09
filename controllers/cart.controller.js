@@ -59,8 +59,8 @@ module.exports.addProduct = catchAsync(async (req, res) => {
     );
 
     if (productIndex !== -1) {
-      // If product exists, update quantity instead of error
-      cart.products[productIndex].quantity += quantity;
+      // If product exists, set quantity to the provided value (not increment)
+      cart.products[productIndex].quantity = quantity;
     } else {
       // Add new product
       cart.products.push({ productId, varientId, quantity });

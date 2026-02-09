@@ -104,29 +104,133 @@ const OrderSchema = mongoose.Schema(
       cancelledAt: Date,
     },
     return_request: {
-      reason: String,
-      proof_images: [String],
-      admin_comment: String,
-      status: {
-        type: String,
-        enum: ["PENDING", "APPROVED", "REJECTED"],
-        default: "PENDING",
+      type: {
+        reason: String,
+        proof_images: [String],
+        admin_comment: String,
+        status: {
+          type: String,
+          enum: ["PENDING", "APPROVED", "REJECTED"],
+        },
+        requestedAt: Date,
+        updatedAt: Date,
       },
-      requestedAt: Date,
-      updatedAt: Date,
+      default: null,
     },
     replacement_request: {
-      reason: String,
-      proof_images: [String],
-      admin_comment: String,
-      status: {
-        type: String,
-        enum: ["PENDING", "APPROVED", "REJECTED"],
-        default: "PENDING",
+      type: {
+        reason: String,
+        proof_images: [String],
+        admin_comment: String,
+        status: {
+          type: String,
+          enum: ["PENDING", "APPROVED", "REJECTED"],
+        },
+        requestedAt: Date,
+        updatedAt: Date,
       },
-      requestedAt: Date,
-      updatedAt: Date,
+      default: null,
     },
+    // Item-level return requests (new schema for individual product returns)
+    item_return_requests: [
+      {
+        product: {
+          type: ObjectId,
+          ref: "Product",
+          required: true,
+        },
+        variant: {
+          type: ObjectId,
+          ref: "ProductVarient",
+          default: null,
+        },
+        quantity: {
+          type: Number,
+          required: true,
+          default: 1,
+        },
+        reason: {
+          type: String,
+          required: true,
+        },
+        proof_images: [String],
+        admin_comment: String,
+        status: {
+          type: String,
+          enum: ["PENDING", "APPROVED", "REJECTED"],
+          required: true,
+        },
+        requestedAt: {
+          type: Date,
+          default: Date.now,
+        },
+        updatedAt: Date,
+      },
+    ],
+    // Item-level replacement requests (new schema for individual product replacements)
+    item_replacement_requests: [
+      {
+        product: {
+          type: ObjectId,
+          ref: "Product",
+          required: true,
+        },
+        variant: {
+          type: ObjectId,
+          ref: "ProductVarient",
+          default: null,
+        },
+        quantity: {
+          type: Number,
+          required: true,
+          default: 1,
+        },
+        reason: {
+          type: String,
+          required: true,
+        },
+        proof_images: [String],
+        admin_comment: String,
+        status: {
+          type: String,
+          enum: ["PENDING", "APPROVED", "REJECTED"],
+          required: true,
+        },
+        requestedAt: {
+          type: Date,
+          default: Date.now,
+        },
+        updatedAt: Date,
+      },
+    ],
+    // Item-level cancellations (track which specific items are cancelled)
+    cancelled_items: [
+      {
+        product: {
+          type: ObjectId,
+          ref: "Product",
+          required: true,
+        },
+        variant: {
+          type: ObjectId,
+          ref: "ProductVarient",
+          default: null,
+        },
+        quantity: {
+          type: Number,
+          required: true,
+          default: 1,
+        },
+        reason: {
+          type: String,
+          required: true,
+        },
+        cancelledAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
     cc_orderId: {
       type: String,
       // required: true,
@@ -161,6 +265,7 @@ OrderSchema.index({ createdAt: -1, order_status: 1 });
 
 // Virtual field for order total (sum of product price * quantity)
 OrderSchema.virtual("orderTotal").get(function () {
+  if (!this.products) return 0;
   return this.products.reduce((sum, item) => sum + item.price * item.quantity, 0);
 });
 

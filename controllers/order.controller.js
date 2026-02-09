@@ -122,6 +122,22 @@ module.exports.placeOrder_post = catchAsync(async (req, res) => {
 
   console.log('📦 Order created with ID:', order._id);
 
+  // remove ordered items from cart
+  try {
+    const cart = await User_Cart.findOne({ userId: userId });
+    if (cart) {
+      cart.products = cart.products.filter(cartItem => 
+        !order.products.some(orderItem => 
+          String(orderItem.product) === String(cartItem.productId) &&
+          String(orderItem.variant || "") === String(cartItem.varientId || "")
+        )
+      );
+      await cart.save();
+    }
+  } catch (err) {
+    console.error('Error updating cart after order placement:', err);
+  }
+
   // Send order confirmation email (fire-and-forget)
   try {
     const emailService = require('../services/email.service');
@@ -144,11 +160,36 @@ module.exports.getAllOrders_get = catchAsync(async (req, res) => {
 
   if (status) {
     if (status === 'return') {
-      filter.order_status = { $in: ['RETURN_REQUESTED', 'RETURN_APPROVED', 'RETURN_REJECTED', 'RETURNED'] };
+      // Match orders with order-level return status OR item-level return requests
+      filter.$or = [
+        { order_status: { $in: ['RETURN_REQUESTED', 'RETURN_APPROVED', 'RETURN_REJECTED', 'RETURNED'] } },
+        { 'item_return_requests.0': { $exists: true } }
+      ];
     } else if (status === 'replacement') {
-      filter.order_status = { $in: ['REPLACEMENT_REQUESTED', 'REPLACEMENT_APPROVED', 'REPLACEMENT_REJECTED', 'REPLACEMENT_IN_PROGRESS'] };
+      // Match orders with order-level replacement status OR item-level replacement requests
+      filter.$or = [
+        { order_status: { $in: ['REPLACEMENT_REQUESTED', 'REPLACEMENT_APPROVED', 'REPLACEMENT_REJECTED', 'REPLACEMENT_IN_PROGRESS'] } },
+        { 'item_replacement_requests.0': { $exists: true } }
+      ];
     } else if (status === 'cancelled') {
-      filter.order_status = { $in: ['CANCELLED_BY_USER', 'CANCELLED_BY_ADMIN', 'CANCELLED'] };
+      // Match orders with order-level cancelled status OR item-level cancellations
+      filter.$or = [
+        { order_status: { $in: ['CANCELLED_BY_USER', 'CANCELLED_BY_ADMIN', 'CANCELLED'] } },
+        { 'cancelled_items.0': { $exists: true } }
+      ];
+    } else if (status === 'DELIVERED') {
+      // Match orders that are DELIVERED, or orders whose status changed due to
+      // item-level return/replacement requests (remaining items are still delivered)
+      filter.$or = [
+        { order_status: 'DELIVERED' },
+        {
+          order_status: { $in: ['RETURN_REQUESTED', 'RETURN_APPROVED', 'RETURN_REJECTED', 'REPLACEMENT_REQUESTED', 'REPLACEMENT_APPROVED', 'REPLACEMENT_REJECTED'] },
+          $or: [
+            { 'item_return_requests.0': { $exists: true } },
+            { 'item_replacement_requests.0': { $exists: true } }
+          ]
+        }
+      ];
     } else {
       filter.order_status = status;
     }
@@ -228,7 +269,7 @@ module.exports.userOrderDetails_get = catchAsync(async (req, res) => {
   const { _id: userId } = req.user;
 
   if (!orderId) return errorRes(res, 400, "Order Id is required.");
-  
+
   // Validate ObjectId format
   if (!mongoose.Types.ObjectId.isValid(orderId)) {
     return errorRes(res, 400, "Invalid Order ID format.");
@@ -245,6 +286,10 @@ module.exports.userOrderDetails_get = catchAsync(async (req, res) => {
     {
       path: "coupon_applied",
     },
+    {
+      path: "parent_order",
+      select: "_id order_status createdAt",
+    },
   ]);
 
   if (!order) return errorRes(res, 404, "Order not found.");
@@ -252,14 +297,21 @@ module.exports.userOrderDetails_get = catchAsync(async (req, res) => {
   if (String(order.buyer._id) !== String(userId))
     return errorRes(res, 403, "Unauthorized.");
 
-  successRes(res, { data: order });
+  // If this order has an approved replacement, find the child replacement order
+  let replacementOrder = null;
+  if (order.order_status === "REPLACEMENT_APPROVED") {
+    replacementOrder = await User_Order.findOne({ parent_order: orderId })
+      .select("_id order_status createdAt");
+  }
+
+  successRes(res, { data: order, replacementOrder });
 });
 
 module.exports.adminOrderDetails_get = catchAsync(async (req, res) => {
   const orderId = req.params.orderId ?? "";
 
   if (!Boolean(orderId)) return errorRes(res, 400, "Order Id is required.");
-  
+
   // Validate ObjectId format
   if (!mongoose.Types.ObjectId.isValid(orderId)) {
     return errorRes(res, 400, "Invalid Order ID format.");
@@ -279,11 +331,21 @@ module.exports.adminOrderDetails_get = catchAsync(async (req, res) => {
     {
       path: "coupon_applied",
     },
+    {
+      path: "parent_order",
+      select: "_id order_status createdAt replacement_request",
+    },
   ]);
 
   if (!order) return errorRes(res, 404, "Order not found.");
 
-  successRes(res, { data: order });
+  // If this is a replacement order, also fetch any child replacement orders
+  let replacementOrder = null;
+  if (order.order_status === "REPLACEMENT_APPROVED") {
+    replacementOrder = await User_Order.findOne({ parent_order: orderId }).select("_id order_status createdAt");
+  }
+
+  successRes(res, { data: order, replacementOrder });
 });
 
 module.exports.getYearWiseorder = asynchandler(async (req, res) => {
@@ -367,6 +429,30 @@ module.exports.updateOrder_post = catchAsync(async (req, res) => {
 
   const order = await User_Order.findById(orderId);
   if (!order) return errorRes(res, 404, "Order does not exist.");
+
+  // CRITICAL FIX: Check if this order has an approved replacement or return
+  if (order_status) {
+    if (order.order_status === "REPLACEMENT_APPROVED") {
+      // Find the replacement order (child order)
+      const replacementOrder = await User_Order.findOne({ parent_order: orderId });
+
+      if (replacementOrder) {
+        return errorRes(res, 400,
+          `Cannot update this order - a replacement order has been created. ` +
+          `Please update the replacement order instead (Order ID: ${replacementOrder._id}). ` +
+          `This order should remain as REPLACEMENT_APPROVED.`
+        );
+      }
+    }
+
+    // Prevent updating orders that are already in terminal states (after replacement/return)
+    if (["RETURNED", "REPLACEMENT_IN_PROGRESS"].includes(order.order_status)) {
+      return errorRes(res, 400,
+        `This order is in ${order.order_status} status and should not be updated further. ` +
+        `If this is for a replacement, please update the new replacement order instead.`
+      );
+    }
+  }
 
   if (payment_status) order.payment_status = payment_status;
 
@@ -663,10 +749,15 @@ module.exports.rzpPaymentVerification = async (req, res) => {
     existingOrder.rzp_orderId = razorpayOrderId;
     existingOrder.rzp_paymentId = razorpayPaymentId;
 
-    // empty cart
-    const cart = await User_Cart.findOne({ user: userId });
+    // remove ordered items from cart
+    const cart = await User_Cart.findOne({ userId: userId });
     if (cart) {
-      cart.products = [];
+      cart.products = cart.products.filter(cartItem => 
+        !existingOrder.products.some(orderItem => 
+          String(orderItem.product) === String(cartItem.productId) &&
+          String(orderItem.variant || "") === String(cartItem.varientId || "")
+        )
+      );
       await cart.save();
     }
 
@@ -923,10 +1014,17 @@ module.exports.ccavenueresponsehandler = async (request, response) => {
           //     }
           //   })
           // );
-          // empty cart
-          const cart = await User_Cart.findOne({ user: updatedOrder.buyer });
-          cart.products = [];
-          await cart.save();
+          // remove ordered items from cart
+          const cart = await User_Cart.findOne({ userId: updatedOrder.buyer });
+          if (cart) {
+            cart.products = cart.products.filter(cartItem => 
+              !updatedOrder.products.some(orderItem => 
+                String(orderItem.product) === String(cartItem.productId) &&
+                String(orderItem.variant || "") === String(cartItem.varientId || "")
+              )
+            );
+            await cart.save();
+          }
           try {
             const emailService = require('../services/email.service');
             const user = await User.findById(updatedOrder.buyer).select('email name');
@@ -977,7 +1075,7 @@ module.exports.ccavenueresponsehandler = async (request, response) => {
 
 module.exports.cancelOrderByUser = catchAsync(async (req, res) => {
   const { orderId } = req.params;
-  const { reason } = req.body;
+  const { reason, product_id, variant_id, quantity } = req.body;
 
   if (!reason) return errorRes(res, 400, "Cancellation reason is required.");
 
@@ -997,6 +1095,96 @@ module.exports.cancelOrderByUser = catchAsync(async (req, res) => {
     return errorRes(res, 400, "Only orders in 'PLACED' status can be cancelled.");
   }
 
+  // Item-level cancellation (new behavior)
+  if (product_id) {
+    // Verify product exists in order
+    const orderItem = order.products.find(
+      p => p.product.toString() === product_id &&
+           (variant_id ? p.variant?.toString() === variant_id : true)
+    );
+
+    if (!orderItem) {
+      return errorRes(res, 400, "Product not found in this order.");
+    }
+
+    // Check if item is already cancelled
+    if (!order.cancelled_items) order.cancelled_items = [];
+
+    const alreadyCancelled = order.cancelled_items.find(
+      c => c.product.toString() === product_id &&
+           (variant_id ? c.variant?.toString() === variant_id : true)
+    );
+
+    if (alreadyCancelled) {
+      return errorRes(res, 400, "This item has already been cancelled.");
+    }
+
+    // Add to cancelled_items array
+    order.cancelled_items.push({
+      product: product_id,
+      variant: variant_id || null,
+      quantity: quantity || orderItem.quantity,
+      reason,
+      cancelledAt: new Date(),
+    });
+
+    // Check if ALL items are now cancelled
+    const allItemsCancelled = order.products.every(p => {
+      return order.cancelled_items.some(
+        c => c.product.toString() === p.product.toString() &&
+             (p.variant ? c.variant?.toString() === p.variant.toString() : !c.variant)
+      );
+    });
+
+    // Only change order status if all items are cancelled
+    if (allItemsCancelled) {
+      order.order_status = "CANCELLED_BY_USER";
+      order.cancellation = {
+        reason: "All items cancelled",
+        cancelledAt: new Date(),
+      };
+    }
+
+    order.status_history.push({
+      status: allItemsCancelled ? "CANCELLED_BY_USER" : "PLACED",
+      reason: `Item cancelled: ${product_id}`,
+      updatedAt: new Date(),
+    });
+
+    await order.save();
+
+    // Restock only the cancelled item
+    const inventory = await Inventory.findOne({
+      product: product_id,
+      variant: variant_id || null,
+    });
+
+    if (inventory) {
+      await inventory.updateStock(
+        quantity || orderItem.quantity,
+        "RETURN",
+        "User Cancellation - Individual Item",
+        order._id,
+        null
+      );
+    }
+
+    // Notify Admin
+    await createNotification({
+      userId: req.user._id,
+      orderId: order._id,
+      type: 'CANCELLATION',
+      title: 'Item Cancelled',
+      text: `User ${req.user.displayName || 'Customer'} has cancelled an item in Order #${order._id}. Reason: ${reason}`
+    });
+
+    return successRes(res, {
+      message: allItemsCancelled ? "All items cancelled." : "Item cancelled successfully.",
+      data: order
+    });
+  }
+
+  // Fallback: Order-level cancellation (backward compatibility)
   order.order_status = "CANCELLED_BY_USER";
   order.cancellation = {
     reason,
@@ -1010,7 +1198,7 @@ module.exports.cancelOrderByUser = catchAsync(async (req, res) => {
 
   await order.save();
 
-  // Restock items
+  // Restock all items
   await updateInventoryForOrder(order, "RETURN", "User Cancellation", null);
 
   // Notify Admin
@@ -1027,9 +1215,14 @@ module.exports.cancelOrderByUser = catchAsync(async (req, res) => {
 
 module.exports.requestReturn = catchAsync(async (req, res) => {
   const { orderId } = req.params;
-  const { reason, proof_images } = req.body;
+  const { reason, proof_images, product_id, variant_id, quantity } = req.body;
 
   if (!reason) return errorRes(res, 400, "Return reason is required.");
+
+  // Require at least one proof image
+  if (!proof_images || !Array.isArray(proof_images) || proof_images.length === 0) {
+    return errorRes(res, 400, "At least one product photo is required for return requests.");
+  }
 
   const order = await User_Order.findById(orderId);
   if (!order) return errorRes(res, 404, "Order not found.");
@@ -1038,13 +1231,98 @@ module.exports.requestReturn = catchAsync(async (req, res) => {
     return errorRes(res, 403, "You are not authorized for this action.");
   }
 
-  if (order.order_status !== "DELIVERED") {
+  // Allow returns when order is DELIVERED, or when another item already triggered a return/replacement request
+  const allowedReturnStatuses = ["DELIVERED", "RETURN_REQUESTED", "REPLACEMENT_REQUESTED"];
+  if (!allowedReturnStatuses.includes(order.order_status)) {
     return errorRes(res, 400, "Returns can only be requested after delivery.");
   }
 
   const daysSinceDelivery = (Date.now() - (order.deliveredAt || order.updatedAt)) / (1000 * 60 * 60 * 24);
   if (daysSinceDelivery > 7) {
     return errorRes(res, 400, "7-day return window has expired.");
+  }
+
+  // Item-level return request (new behavior)
+  if (product_id) {
+    // Verify product exists in order
+    const orderItem = order.products.find(
+      p => p.product.toString() === product_id &&
+           (variant_id ? p.variant?.toString() === variant_id : true)
+    );
+
+    if (!orderItem) {
+      return errorRes(res, 400, "Product not found in this order.");
+    }
+
+    // Check if return already exists for this specific item
+    if (!order.item_return_requests) order.item_return_requests = [];
+
+    const existingReturn = order.item_return_requests.find(
+      r => r.product.toString() === product_id &&
+           r.status === 'PENDING' &&
+           (variant_id ? r.variant?.toString() === variant_id : true)
+    );
+
+    if (existingReturn) {
+      return errorRes(res, 400, "A return request already exists for this item.");
+    }
+
+    // Check if replacement already exists for this item
+    if (order.item_replacement_requests) {
+      const existingReplacement = order.item_replacement_requests.find(
+        r => r.product.toString() === product_id &&
+             r.status === 'PENDING' &&
+             (variant_id ? r.variant?.toString() === variant_id : true)
+      );
+
+      if (existingReplacement) {
+        return errorRes(res, 400, "A replacement request already exists for this item. Cannot request both.");
+      }
+    }
+
+    // Add item-level return request
+    order.item_return_requests.push({
+      product: product_id,
+      variant: variant_id || null,
+      quantity: quantity || orderItem.quantity,
+      reason,
+      proof_images,
+      status: "PENDING",
+      requestedAt: new Date(),
+    });
+
+    // Update order status if this is the first item-level request
+    if (!order.order_status.includes('RETURN')) {
+      order.order_status = "RETURN_REQUESTED";
+    }
+
+    order.status_history.push({
+      status: "RETURN_REQUESTED",
+      reason: `Return requested for item: ${product_id}`,
+      updatedAt: new Date(),
+    });
+
+    await order.save();
+
+    // Notify Admin
+    await createNotification({
+      userId: req.user._id,
+      orderId: order._id,
+      type: 'RETURN_REQUEST',
+      title: 'Return Requested',
+      text: `User ${req.user.displayName || 'Customer'} requested a return for an item in Order #${order._id}. Reason: ${reason}`
+    });
+
+    return successRes(res, { message: "Return requested successfully for the item.", data: order });
+  }
+
+  // Fallback: Order-level return request (backward compatibility)
+  // Check if return or replacement request already exists
+  if (order.return_request) {
+    return errorRes(res, 400, "A return request already exists for this order.");
+  }
+  if (order.replacement_request) {
+    return errorRes(res, 400, "A replacement request already exists for this order. Cannot request both return and replacement.");
   }
 
   order.order_status = "RETURN_REQUESTED";
@@ -1076,9 +1354,14 @@ module.exports.requestReturn = catchAsync(async (req, res) => {
 
 module.exports.requestReplacement = catchAsync(async (req, res) => {
   const { orderId } = req.params;
-  const { reason, proof_images } = req.body;
+  const { reason, proof_images, product_id, variant_id, quantity } = req.body;
 
   if (!reason) return errorRes(res, 400, "Replacement reason is required.");
+
+  // Require at least one proof image
+  if (!proof_images || !Array.isArray(proof_images) || proof_images.length === 0) {
+    return errorRes(res, 400, "At least one product photo is required for replacement requests.");
+  }
 
   const order = await User_Order.findById(orderId);
   if (!order) return errorRes(res, 404, "Order not found.");
@@ -1087,13 +1370,98 @@ module.exports.requestReplacement = catchAsync(async (req, res) => {
     return errorRes(res, 403, "You are not authorized for this action.");
   }
 
-  if (order.order_status !== "DELIVERED") {
+  // Allow replacements when order is DELIVERED, or when another item already triggered a return/replacement request
+  const allowedReplacementStatuses = ["DELIVERED", "RETURN_REQUESTED", "REPLACEMENT_REQUESTED"];
+  if (!allowedReplacementStatuses.includes(order.order_status)) {
     return errorRes(res, 400, "Replacement can only be requested after delivery.");
   }
 
   const daysSinceDelivery = (Date.now() - (order.deliveredAt || order.updatedAt)) / (1000 * 60 * 60 * 24);
   if (daysSinceDelivery > 7) {
     return errorRes(res, 400, "7-day replacement window has expired.");
+  }
+
+  // Item-level replacement request (new behavior)
+  if (product_id) {
+    // Verify product exists in order
+    const orderItem = order.products.find(
+      p => p.product.toString() === product_id &&
+           (variant_id ? p.variant?.toString() === variant_id : true)
+    );
+
+    if (!orderItem) {
+      return errorRes(res, 400, "Product not found in this order.");
+    }
+
+    // Check if replacement already exists for this specific item
+    if (!order.item_replacement_requests) order.item_replacement_requests = [];
+
+    const existingReplacement = order.item_replacement_requests.find(
+      r => r.product.toString() === product_id &&
+           r.status === 'PENDING' &&
+           (variant_id ? r.variant?.toString() === variant_id : true)
+    );
+
+    if (existingReplacement) {
+      return errorRes(res, 400, "A replacement request already exists for this item.");
+    }
+
+    // Check if return already exists for this item
+    if (order.item_return_requests) {
+      const existingReturn = order.item_return_requests.find(
+        r => r.product.toString() === product_id &&
+             r.status === 'PENDING' &&
+             (variant_id ? r.variant?.toString() === variant_id : true)
+      );
+
+      if (existingReturn) {
+        return errorRes(res, 400, "A return request already exists for this item. Cannot request both.");
+      }
+    }
+
+    // Add item-level replacement request
+    order.item_replacement_requests.push({
+      product: product_id,
+      variant: variant_id || null,
+      quantity: quantity || orderItem.quantity,
+      reason,
+      proof_images,
+      status: "PENDING",
+      requestedAt: new Date(),
+    });
+
+    // Update order status if this is the first item-level request
+    if (!order.order_status.includes('REPLACEMENT')) {
+      order.order_status = "REPLACEMENT_REQUESTED";
+    }
+
+    order.status_history.push({
+      status: "REPLACEMENT_REQUESTED",
+      reason: `Replacement requested for item: ${product_id}`,
+      updatedAt: new Date(),
+    });
+
+    await order.save();
+
+    // Notify Admin
+    await createNotification({
+      userId: req.user._id,
+      orderId: order._id,
+      type: 'REPLACEMENT_REQUEST',
+      title: 'Replacement Requested',
+      text: `User ${req.user.displayName || 'Customer'} requested a replacement for an item in Order #${order._id}. Reason: ${reason}`
+    });
+
+    return successRes(res, { message: "Replacement requested successfully for the item.", data: order });
+  }
+
+  // Fallback: Order-level replacement request (backward compatibility)
+  // Check if return or replacement request already exists
+  if (order.replacement_request) {
+    return errorRes(res, 400, "A replacement request already exists for this order.");
+  }
+  if (order.return_request) {
+    return errorRes(res, 400, "A return request already exists for this order. Cannot request both return and replacement.");
   }
 
   order.order_status = "REPLACEMENT_REQUESTED";
@@ -1138,35 +1506,79 @@ module.exports.adminApproveRequest = catchAsync(async (req, res) => {
   }
 
   if (type === 'return') {
+    // Check if it's an item-level or order-level return request
+    if (order.item_return_requests && order.item_return_requests.length > 0) {
+      // Item-level return request
+      const pendingRequest = order.item_return_requests.find(r => r.status === 'PENDING');
+      if (pendingRequest) {
+        pendingRequest.status = "APPROVED";
+        pendingRequest.admin_comment = admin_comment;
+        pendingRequest.updatedAt = new Date();
+      }
+    } else if (order.return_request) {
+      // Order-level return request
+      order.return_request.status = "APPROVED";
+      order.return_request.admin_comment = admin_comment;
+      order.return_request.updatedAt = new Date();
+    }
     order.order_status = "RETURN_APPROVED";
-    order.return_request.status = "APPROVED";
-    order.return_request.admin_comment = admin_comment;
-    order.return_request.updatedAt = new Date();
   } else if (type === 'replacement') {
-    order.order_status = "REPLACEMENT_APPROVED";
-    order.replacement_request.status = "APPROVED";
-    order.replacement_request.admin_comment = admin_comment;
-    order.replacement_request.updatedAt = new Date();
+    // Check if it's an item-level or order-level replacement request
+    if (order.item_replacement_requests && order.item_replacement_requests.length > 0) {
+      // Item-level replacement request
+      const pendingRequest = order.item_replacement_requests.find(r => r.status === 'PENDING');
+      if (pendingRequest) {
+        pendingRequest.status = "APPROVED";
+        pendingRequest.admin_comment = admin_comment;
+        pendingRequest.updatedAt = new Date();
 
-    // Create a new linked order for replacement
-    const replacementOrder = new User_Order({
-      buyer: order.buyer,
-      products: order.products.map(p => ({ 
-        product: p.product,
-        variant: p.variant,
-        quantity: p.quantity,
-        price: 0 
-      })),
-      shippingAddress: order.shippingAddress,
-      payment_mode: order.payment_mode,
-      payment_status: "COMPLETE",
-      order_status: "PLACED",
-      parent_order: order._id,
-    });
-    await replacementOrder.save();
-    
-    // Decrease inventory for the new items
-    await updateInventoryForOrder(replacementOrder, "OUT", "Replacement Order", req.admin?._id);
+        // Create a new linked order for replacement (only for the specific item)
+        const replacementOrder = new User_Order({
+          buyer: order.buyer,
+          products: [{
+            product: pendingRequest.product,
+            variant: pendingRequest.variant,
+            quantity: pendingRequest.quantity,
+            price: 0
+          }],
+          shippingAddress: order.shippingAddress,
+          payment_mode: order.payment_mode,
+          payment_status: "COMPLETE",
+          order_status: "PLACED",
+          parent_order: order._id,
+        });
+        await replacementOrder.save();
+
+        // Decrease inventory for the replacement item
+        await updateInventoryForOrder(replacementOrder, "OUT", "Replacement Order - Item Level", req.admin?._id);
+      }
+    } else if (order.replacement_request) {
+      // Order-level replacement request
+      order.replacement_request.status = "APPROVED";
+      order.replacement_request.admin_comment = admin_comment;
+      order.replacement_request.updatedAt = new Date();
+
+      // Create a new linked order for replacement (all items)
+      const replacementOrder = new User_Order({
+        buyer: order.buyer,
+        products: order.products.map(p => ({
+          product: p.product,
+          variant: p.variant,
+          quantity: p.quantity,
+          price: 0
+        })),
+        shippingAddress: order.shippingAddress,
+        payment_mode: order.payment_mode,
+        payment_status: "COMPLETE",
+        order_status: "PLACED",
+        parent_order: order._id,
+      });
+      await replacementOrder.save();
+
+      // Decrease inventory for the new items
+      await updateInventoryForOrder(replacementOrder, "OUT", "Replacement Order", req.admin?._id);
+    }
+    order.order_status = "REPLACEMENT_APPROVED";
   } else {
     return errorRes(res, 400, "Invalid request type.");
   }
@@ -1193,15 +1605,37 @@ module.exports.adminRejectRequest = catchAsync(async (req, res) => {
   if (!order) return errorRes(res, 404, "Order not found.");
 
   if (type === 'return') {
+    // Check for item-level return request first
+    if (order.item_return_requests && order.item_return_requests.length > 0) {
+      const pendingRequest = order.item_return_requests.find(r => r.status === 'PENDING');
+      if (pendingRequest) {
+        pendingRequest.status = "REJECTED";
+        pendingRequest.admin_comment = admin_comment;
+        pendingRequest.updatedAt = new Date();
+      }
+    } else if (order.return_request) {
+      // Order-level return request
+      order.return_request.status = "REJECTED";
+      order.return_request.admin_comment = admin_comment;
+      order.return_request.updatedAt = new Date();
+    }
     order.order_status = "RETURN_REJECTED";
-    order.return_request.status = "REJECTED";
-    order.return_request.admin_comment = admin_comment;
-    order.return_request.updatedAt = new Date();
   } else if (type === 'replacement') {
+    // Check for item-level replacement request first
+    if (order.item_replacement_requests && order.item_replacement_requests.length > 0) {
+      const pendingRequest = order.item_replacement_requests.find(r => r.status === 'PENDING');
+      if (pendingRequest) {
+        pendingRequest.status = "REJECTED";
+        pendingRequest.admin_comment = admin_comment;
+        pendingRequest.updatedAt = new Date();
+      }
+    } else if (order.replacement_request) {
+      // Order-level replacement request
+      order.replacement_request.status = "REJECTED";
+      order.replacement_request.admin_comment = admin_comment;
+      order.replacement_request.updatedAt = new Date();
+    }
     order.order_status = "REPLACEMENT_REJECTED";
-    order.replacement_request.status = "REJECTED";
-    order.replacement_request.admin_comment = admin_comment;
-    order.replacement_request.updatedAt = new Date();
   } else {
     return errorRes(res, 400, "Invalid request type.");
   }
